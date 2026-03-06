@@ -1,0 +1,39 @@
+[package]
+name = "rustwriter"
+version = "0.1.0"
+edition = "2021"
+description = "A fullscreen distraction-free writing app inspired by FocusWriter"
+authors = ["Mr.Twister"]
+license = "GPL-3.0"
+
+[dependencies]
+eframe = { version = "0.27", features = ["default", "x11", "wayland"] }
+egui = "0.27"
+egui_extras = { version = "0.27", features = ["image", "file"] }
+
+# Image loading
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif"] }
+
+# Serialization for settings/config
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# File dialogs
+rfd = "0.14"
+
+# Text/document handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Directories for config/save paths
+directories = "5.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
