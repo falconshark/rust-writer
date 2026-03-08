@@ -28,14 +28,14 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "FocusWriter RS",
+        "Rust Writer",
         native_options,
         Box::new(|cc| {
             // Load fonts
             setup_fonts(&cc.egui_ctx);
             // Load images support
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::new(RustWriterApp::new(cc))
+            Ok(Box::new(RustWriterApp::new(cc)))
         }),
     )
 }

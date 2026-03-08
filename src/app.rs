@@ -35,9 +35,9 @@ pub struct RustWriterApp {
 
     // Writing area state
     scroll_offset: f32,
-    typewriter_mode: bool,       // Scroll to keep cursor centered
-    focus_mode: bool,            // Dim paragraphs not being edited
-    paragraph_focus_alpha: f32,  // Alpha for unfocused text
+    typewriter_mode: bool,      // Scroll to keep cursor centered
+    focus_mode: bool,           // Dim paragraphs not being edited
+    paragraph_focus_alpha: f32, // Alpha for unfocused text
 
     // Auto-save
     auto_save_timer: f32,
@@ -161,7 +161,10 @@ impl RustWriterApp {
 
         if let Some(path) = file {
             match self.doc_manager.open_document(&path) {
-                Ok(_) => self.show_status(&format!("Opened: {}", path.file_name().unwrap_or_default().to_string_lossy())),
+                Ok(_) => self.show_status(&format!(
+                    "Opened: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                )),
                 Err(e) => self.show_status(&format!("Error opening file: {}", e)),
             }
         }
@@ -191,7 +194,10 @@ impl RustWriterApp {
             if let Some(doc) = self.doc_manager.current_document_mut() {
                 doc.path = Some(path.clone());
                 match doc.save() {
-                    Ok(_) => self.show_status(&format!("Saved as: {}", path.file_name().unwrap_or_default().to_string_lossy())),
+                    Ok(_) => self.show_status(&format!(
+                        "Saved as: {}",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    )),
                     Err(e) => self.show_status(&format!("Save error: {}", e)),
                 }
             }
@@ -253,24 +259,42 @@ impl RustWriterApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // File operations
-                    if ui.button("📄 New").clicked() { self.new_document(); }
-                    if ui.button("📂 Open").clicked() { self.open_document(); }
-                    if ui.button("💾 Save").clicked() { self.save_current_document(); }
+                    if ui.button("📄 New").clicked() {
+                        self.new_document();
+                    }
+                    if ui.button("📂 Open").clicked() {
+                        self.open_document();
+                    }
+                    if ui.button("💾 Save").clicked() {
+                        self.save_current_document();
+                    }
 
                     ui.separator();
 
                     // View toggles
-                    let fs_label = if self.is_fullscreen { "⊡ Exit FS" } else { "⛶ Fullscreen" };
+                    let fs_label = if self.is_fullscreen {
+                        "⊡ Exit FS"
+                    } else {
+                        "⛶ Fullscreen"
+                    };
                     if ui.button(fs_label).clicked() {
                         self.toggle_fullscreen(ctx);
                     }
 
-                    let tw_color = if self.typewriter_mode { Color32::YELLOW } else { Color32::GRAY };
+                    let tw_color = if self.typewriter_mode {
+                        Color32::YELLOW
+                    } else {
+                        Color32::GRAY
+                    };
                     if ui.colored_label(tw_color, "⌨ Typewriter").clicked() {
                         self.typewriter_mode = !self.typewriter_mode;
                     }
 
-                    let fm_color = if self.focus_mode { Color32::YELLOW } else { Color32::GRAY };
+                    let fm_color = if self.focus_mode {
+                        Color32::YELLOW
+                    } else {
+                        Color32::GRAY
+                    };
                     if ui.colored_label(fm_color, "🎯 Focus").clicked() {
                         self.focus_mode = !self.focus_mode;
                     }
@@ -316,38 +340,70 @@ impl RustWriterApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Document title
-                    let title = doc.map(|d| d.title()).unwrap_or_else(|| "No document".to_string());
+                    let title = doc
+                        .map(|d| d.title())
+                        .unwrap_or_else(|| "No document".to_string());
                     let modified = doc.map(|d| d.is_modified()).unwrap_or(false);
-                    let display = if modified { format!("✏ {} *", title) } else { format!("📝 {}", title) };
-                    ui.label(RichText::new(display).color(self.current_theme.text_color).small());
+                    let display = if modified {
+                        format!("✏ {} *", title)
+                    } else {
+                        format!("📝 {}", title)
+                    };
+                    ui.label(
+                        RichText::new(display)
+                            .color(self.current_theme.text_color)
+                            .small(),
+                    );
 
                     ui.separator();
 
                     // Word count
                     if let Some(doc) = doc {
                         let wc = doc.word_count();
-                        ui.label(RichText::new(format!("Words: {}", wc)).color(self.current_theme.text_color).small());
+                        ui.label(
+                            RichText::new(format!("Words: {}", wc))
+                                .color(self.current_theme.text_color)
+                                .small(),
+                        );
 
                         ui.separator();
 
                         // Character count
                         let cc = doc.char_count();
-                        ui.label(RichText::new(format!("Chars: {}", cc)).color(self.current_theme.text_color).small());
+                        ui.label(
+                            RichText::new(format!("Chars: {}", cc))
+                                .color(self.current_theme.text_color)
+                                .small(),
+                        );
                     }
 
                     // Daily goal progress
                     if self.daily_goal_enabled && self.daily_goal_words > 0 {
                         ui.separator();
-                        let progress = (self.session_words_typed as f32 / self.daily_goal_words as f32).min(1.0);
+                        let progress = (self.session_words_typed as f32
+                            / self.daily_goal_words as f32)
+                            .min(1.0);
                         let bar_width = 100.0;
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(bar_width, 14.0), egui::Sense::hover());
+                        let (rect, _) = ui
+                            .allocate_exact_size(Vec2::new(bar_width, 14.0), egui::Sense::hover());
                         let painter = ui.painter();
                         painter.rect_filled(rect, 3.0, Color32::from_gray(60));
-                        let filled = Rect::from_min_size(rect.min, Vec2::new(bar_width * progress, 14.0));
-                        let bar_color = if progress >= 1.0 { Color32::GREEN } else { Color32::from_rgb(70, 130, 180) };
+                        let filled =
+                            Rect::from_min_size(rect.min, Vec2::new(bar_width * progress, 14.0));
+                        let bar_color = if progress >= 1.0 {
+                            Color32::GREEN
+                        } else {
+                            Color32::from_rgb(70, 130, 180)
+                        };
                         painter.rect_filled(filled, 3.0, bar_color);
-                        ui.label(RichText::new(format!("{}/{}", self.session_words_typed, self.daily_goal_words))
-                            .color(self.current_theme.text_color).small());
+                        ui.label(
+                            RichText::new(format!(
+                                "{}/{}",
+                                self.session_words_typed, self.daily_goal_words
+                            ))
+                            .color(self.current_theme.text_color)
+                            .small(),
+                        );
                     }
 
                     // Status message (right-aligned)
@@ -378,8 +434,15 @@ impl RustWriterApp {
                     for i in 0..count {
                         let title = self.doc_manager.document_title(i);
                         let is_active = i == current;
-                        let color = if is_active { Color32::WHITE } else { Color32::GRAY };
-                        if ui.selectable_label(is_active, RichText::new(&title).color(color)).clicked() {
+                        let color = if is_active {
+                            Color32::WHITE
+                        } else {
+                            Color32::GRAY
+                        };
+                        if ui
+                            .selectable_label(is_active, RichText::new(&title).color(color))
+                            .clicked()
+                        {
                             self.doc_manager.set_current(i);
                         }
                         // Close button
@@ -399,18 +462,16 @@ impl RustWriterApp {
         let text_width = self.settings.text_column_width;
         let font_size = self.settings.font_size;
         let font_family = egui::FontFamily::Proportional;
-
         let theme = self.current_theme.clone();
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                // Paint background
+                // 繪製背景
                 self.background.paint(ui.painter(), ui.max_rect());
 
-                // Center the writing column
-                let available = ui.available_width();
-                let left_pad = ((available - text_width) / 2.0).max(20.0);
+                let available_width = ui.available_width();
+                let left_pad = ((available_width - text_width) / 2.0).max(20.0);
 
                 ui.horizontal(|ui| {
                     ui.add_space(left_pad);
@@ -418,7 +479,7 @@ impl RustWriterApp {
                         ui.set_max_width(text_width);
                         ui.add_space(30.0);
 
-                        // Paper-like background behind text
+                        // 繪製紙張背景
                         let paper_rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(
                             paper_rect.expand2(Vec2::new(20.0, 0.0)),
@@ -426,26 +487,43 @@ impl RustWriterApp {
                             theme.paper_color,
                         );
 
-                        // Get document text
                         let text = self.doc_manager.current_text_mut();
 
-                        // Main text editor
+                        // --- 核心修改部分 ---
                         let text_edit = TextEdit::multiline(text)
                             .font(FontId::new(font_size, font_family))
                             .text_color(theme.text_color)
                             .frame(false)
                             .desired_width(text_width)
                             .desired_rows(40)
-                            .margin(egui::Margin::symmetric(20.0, 20.0));
+                            .margin(egui::Margin::symmetric(20.0, 20.0))
+                            .lock_focus(true);
 
-                        let response = ui.add(text_edit);
+                        let output = text_edit.show(ui);
+                        let response = output.response;
 
-                        // Track word count changes for daily goal
+                        // Update IME cursor area so Chinese/Japanese/Korean input
+                        // methods know where to display the composition window.
+                        if response.has_focus() {
+                            if let Some(state) = TextEdit::load_state(ctx, response.id) {
+                                if let Some(cursor_range) = state.cursor.range(&output.galley) {
+                                    let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
+                                    let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
+                                        egui::Rect::from_min_size(
+                                            screen_pos,
+                                            egui::vec2(1.0, font_size),
+                                        ),
+                                    ));
+                                }
+                            }
+                        }
+
                         if response.changed() {
                             self.doc_manager.mark_modified();
                         }
 
-                        ui.add_space(200.0); // Padding at bottom
+                        ui.add_space(200.0);
                     });
                 });
             });
@@ -468,27 +546,45 @@ impl RustWriterApp {
                 ui.separator();
 
                 ui.horizontal(|ui| {
-                    if ui.selectable_label(
-                        matches!(self.background.kind, super::background::BackgroundKind::SolidColor(_)),
-                        "Solid Color"
-                    ).clicked() {
+                    if ui
+                        .selectable_label(
+                            matches!(
+                                self.background.kind,
+                                super::background::BackgroundKind::SolidColor(_)
+                            ),
+                            "Solid Color",
+                        )
+                        .clicked()
+                    {
                         self.background.set_solid(Color32::from_rgb(30, 35, 45));
                     }
 
-                    if ui.selectable_label(
-                        matches!(self.background.kind, super::background::BackgroundKind::Gradient(_, _)),
-                        "Gradient"
-                    ).clicked() {
+                    if ui
+                        .selectable_label(
+                            matches!(
+                                self.background.kind,
+                                super::background::BackgroundKind::Gradient(_, _)
+                            ),
+                            "Gradient",
+                        )
+                        .clicked()
+                    {
                         self.background.set_gradient(
                             Color32::from_rgb(20, 20, 40),
                             Color32::from_rgb(40, 40, 80),
                         );
                     }
 
-                    if ui.selectable_label(
-                        matches!(self.background.kind, super::background::BackgroundKind::Image(_)),
-                        "Image File"
-                    ).clicked() {
+                    if ui
+                        .selectable_label(
+                            matches!(
+                                self.background.kind,
+                                super::background::BackgroundKind::Image(_)
+                            ),
+                            "Image File",
+                        )
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "gif"])
                             .pick_file()
@@ -529,7 +625,10 @@ impl RustWriterApp {
 
                 ui.separator();
                 ui.label("Overlay opacity (paper):");
-                ui.add(egui::Slider::new(&mut self.background.overlay_opacity, 0.0..=1.0));
+                ui.add(egui::Slider::new(
+                    &mut self.background.overlay_opacity,
+                    0.0..=1.0,
+                ));
 
                 ui.separator();
                 if ui.button("Close").clicked() {
@@ -558,7 +657,10 @@ impl RustWriterApp {
                     ui.heading("Font");
                     ui.horizontal(|ui| {
                         ui.label("Size:");
-                        ui.add(egui::Slider::new(&mut self.settings.font_size, 10.0..=36.0).suffix("pt"));
+                        ui.add(
+                            egui::Slider::new(&mut self.settings.font_size, 10.0..=36.0)
+                                .suffix("pt"),
+                        );
                     });
 
                     ui.separator();
@@ -567,7 +669,10 @@ impl RustWriterApp {
                     ui.heading("Writing Area");
                     ui.horizontal(|ui| {
                         ui.label("Column width:");
-                        ui.add(egui::Slider::new(&mut self.settings.text_column_width, 400.0..=1200.0).suffix("px"));
+                        ui.add(
+                            egui::Slider::new(&mut self.settings.text_column_width, 400.0..=1200.0)
+                                .suffix("px"),
+                        );
                     });
 
                     ui.separator();
@@ -576,7 +681,10 @@ impl RustWriterApp {
                     ui.heading("Auto-Save");
                     ui.horizontal(|ui| {
                         ui.label("Interval:");
-                        ui.add(egui::Slider::new(&mut self.settings.auto_save_interval, 30.0..=600.0).suffix("s"));
+                        ui.add(
+                            egui::Slider::new(&mut self.settings.auto_save_interval, 30.0..=600.0)
+                                .suffix("s"),
+                        );
                     });
                     self.auto_save_interval = self.settings.auto_save_interval;
 
@@ -584,7 +692,10 @@ impl RustWriterApp {
 
                     // Typewriter mode
                     ui.heading("Modes");
-                    ui.checkbox(&mut self.settings.typewriter_mode, "Typewriter mode (keep cursor centered)");
+                    ui.checkbox(
+                        &mut self.settings.typewriter_mode,
+                        "Typewriter mode (keep cursor centered)",
+                    );
                     self.typewriter_mode = self.settings.typewriter_mode;
                     ui.checkbox(&mut self.settings.typing_sounds, "Typing sound effects");
                     self.typing_sounds_enabled = self.settings.typing_sounds;
@@ -593,12 +704,18 @@ impl RustWriterApp {
 
                     // Daily goal
                     ui.heading("Daily Writing Goal");
-                    ui.checkbox(&mut self.settings.daily_goal_enabled, "Enable daily word goal");
+                    ui.checkbox(
+                        &mut self.settings.daily_goal_enabled,
+                        "Enable daily word goal",
+                    );
                     self.daily_goal_enabled = self.settings.daily_goal_enabled;
                     if self.settings.daily_goal_enabled {
                         ui.horizontal(|ui| {
                             ui.label("Words per day:");
-                            ui.add(egui::DragValue::new(&mut self.settings.daily_goal_words).clamp_range(100..=10000));
+                            ui.add(
+                                egui::DragValue::new(&mut self.settings.daily_goal_words)
+                                    .range(100..=10000),
+                            );
                         });
                         self.daily_goal_words = self.settings.daily_goal_words;
                     }
@@ -697,8 +814,16 @@ impl RustWriterApp {
                     ui.label("• image-rs (background images)");
                     ui.label("• rfd (native file dialogs)");
                     ui.add_space(10.0);
-                    ui.label(RichText::new("Original FocusWriter by Graeme Gott").color(Color32::GRAY).small());
-                    ui.label(RichText::new("https://github.com/gottcode/focuswriter").color(Color32::LIGHT_BLUE).small());
+                    ui.label(
+                        RichText::new("Original FocusWriter by Graeme Gott")
+                            .color(Color32::GRAY)
+                            .small(),
+                    );
+                    ui.label(
+                        RichText::new("https://github.com/gottcode/focuswriter")
+                            .color(Color32::LIGHT_BLUE)
+                            .small(),
+                    );
                     ui.add_space(5.0);
                     if ui.button("Close").clicked() {
                         self.show_about_dialog = false;
@@ -730,6 +855,11 @@ impl RustWriterApp {
 impl eframe::App for RustWriterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dt = ctx.input(|i| i.unstable_dt).min(0.1);
+
+        // Enable IME for CJK input methods (GCIN, ibus, fcitx).
+        // egui-winit calls window.set_ime_allowed() based on this command.
+        // Must be sent every frame while a TextEdit is potentially focused.
+        ctx.send_viewport_cmd(egui::ViewportCommand::IMEAllowed(true));
 
         // Timers and background logic
         self.tick_timers(dt);
