@@ -9,6 +9,7 @@ use crate::word_count::WordCountBar;
 
 use eframe::egui::{self, Color32, FontId, Key, Rect, RichText, TextEdit, Vec2};
 
+#[allow(dead_code)]
 pub struct RustWriterApp {
     // Core state
     doc_manager: DocumentManager,
@@ -35,9 +36,7 @@ pub struct RustWriterApp {
 
     // Writing area state
     scroll_offset: f32,
-    typewriter_mode: bool,      // Scroll to keep cursor centered
-    focus_mode: bool,           // Dim paragraphs not being edited
-    paragraph_focus_alpha: f32, // Alpha for unfocused text
+    typewriter_mode: bool, // Scroll to keep cursor centered
 
     // Auto-save
     auto_save_timer: f32,
@@ -82,8 +81,6 @@ impl RustWriterApp {
             current_theme,
             scroll_offset: 0.0,
             typewriter_mode: settings.typewriter_mode,
-            focus_mode: false,
-            paragraph_focus_alpha: 0.3,
             auto_save_timer: 0.0,
             auto_save_interval: settings.auto_save_interval,
             daily_goal_words: settings.daily_goal_words,
@@ -125,10 +122,6 @@ impl RustWriterApp {
         // F5 - Typewriter mode
         if input.key_pressed(Key::F5) {
             self.typewriter_mode = !self.typewriter_mode;
-        }
-        // F6 - Focus mode
-        if input.key_pressed(Key::F6) {
-            self.focus_mode = !self.focus_mode;
         }
         // Escape - Exit fullscreen
         if input.key_pressed(Key::Escape) && self.is_fullscreen {
@@ -240,11 +233,6 @@ impl RustWriterApp {
 
     // ─── UI rendering ──────────────────────────────────────────────────────
 
-    fn render_background(&mut self, ui: &mut egui::Ui) {
-        let rect = ui.max_rect();
-        self.background.paint(ui.painter(), rect);
-    }
-
     fn render_toolbar(&mut self, ctx: &egui::Context) {
         if !self.show_toolbar {
             return;
@@ -288,15 +276,6 @@ impl RustWriterApp {
                     };
                     if ui.colored_label(tw_color, "⌨ Typewriter").clicked() {
                         self.typewriter_mode = !self.typewriter_mode;
-                    }
-
-                    let fm_color = if self.focus_mode {
-                        Color32::YELLOW
-                    } else {
-                        Color32::GRAY
-                    };
-                    if ui.colored_label(fm_color, "🎯 Focus").clicked() {
-                        self.focus_mode = !self.focus_mode;
                     }
 
                     ui.separator();
@@ -599,8 +578,7 @@ impl RustWriterApp {
                 match &mut self.background.kind {
                     super::background::BackgroundKind::SolidColor(color) => {
                         ui.label("Pick a color:");
-                        let rgba = [color.r(), color.g(), color.b(), color.a()];
-                        if ui.color_edit_button_srgba(color).changed() {}
+                        ui.color_edit_button_srgba(color);
                     }
                     super::background::BackgroundKind::Gradient(c1, c2) => {
                         ui.horizontal(|ui| {

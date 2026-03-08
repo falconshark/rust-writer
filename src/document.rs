@@ -5,6 +5,7 @@ use std::fs;
 use chrono::{DateTime, Local};
 
 /// A single text document
+#[allow(dead_code)]
 pub struct Document {
     pub path: Option<PathBuf>,
     pub text: String,
@@ -83,6 +84,7 @@ impl Document {
         self.text.chars().count()
     }
 
+    #[allow(dead_code)]
     pub fn line_count(&self) -> usize {
         if self.text.is_empty() {
             0
@@ -92,6 +94,7 @@ impl Document {
     }
 
     /// Returns paragraphs (double-newline separated)
+    #[allow(dead_code)]
     pub fn paragraphs(&self) -> Vec<&str> {
         self.text.split("\n\n").collect()
     }
