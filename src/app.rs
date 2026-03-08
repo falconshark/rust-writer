@@ -425,7 +425,7 @@ impl RustWriterApp {
                             self.doc_manager.set_current(i);
                         }
                         // Close button
-                        if ui.small_button("✕").clicked() {
+                        if ui.small_button("x").clicked() {
                             self.doc_manager.close_document(i);
                             break;
                         }
@@ -452,59 +452,62 @@ impl RustWriterApp {
                 let available_width = ui.available_width();
                 let left_pad = ((available_width - text_width) / 2.0).max(20.0);
 
-                ui.horizontal(|ui| {
-                    ui.add_space(left_pad);
-                    ui.vertical(|ui| {
-                        ui.set_max_width(text_width);
-                        ui.add_space(30.0);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.add_space(left_pad);
+                            ui.vertical(|ui| {
+                                ui.set_max_width(text_width);
+                                ui.add_space(30.0);
 
-                        // 繪製紙張背景
-                        let paper_rect = ui.available_rect_before_wrap();
-                        ui.painter().rect_filled(
-                            paper_rect.expand2(Vec2::new(20.0, 0.0)),
-                            4.0,
-                            theme.paper_color,
-                        );
+                                // 繪製紙張背景
+                                let paper_rect = ui.available_rect_before_wrap();
+                                ui.painter().rect_filled(
+                                    paper_rect.expand2(Vec2::new(20.0, 0.0)),
+                                    4.0,
+                                    theme.paper_color,
+                                );
 
-                        let text = self.doc_manager.current_text_mut();
+                                let text = self.doc_manager.current_text_mut();
 
-                        // --- 核心修改部分 ---
-                        let text_edit = TextEdit::multiline(text)
-                            .font(FontId::new(font_size, font_family))
-                            .text_color(theme.text_color)
-                            .frame(false)
-                            .desired_width(text_width)
-                            .desired_rows(40)
-                            .margin(egui::Margin::symmetric(20.0, 20.0))
-                            .lock_focus(true);
+                                let text_edit = TextEdit::multiline(text)
+                                    .font(FontId::new(font_size, font_family))
+                                    .text_color(theme.text_color)
+                                    .frame(false)
+                                    .desired_width(text_width)
+                                    .desired_rows(40)
+                                    .margin(egui::Margin::symmetric(20.0, 20.0))
+                                    .lock_focus(true);
 
-                        let output = text_edit.show(ui);
-                        let response = output.response;
+                                let output = text_edit.show(ui);
+                                let response = output.response;
 
-                        // Update IME cursor area so Chinese/Japanese/Korean input
-                        // methods know where to display the composition window.
-                        if response.has_focus() {
-                            if let Some(state) = TextEdit::load_state(ctx, response.id) {
-                                if let Some(cursor_range) = state.cursor.range(&output.galley) {
-                                    let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                    let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
-                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                        egui::Rect::from_min_size(
-                                            screen_pos,
-                                            egui::vec2(1.0, font_size),
-                                        ),
-                                    ));
+                                // Update IME cursor area so Chinese/Japanese/Korean input
+                                // methods know where to display the composition window.
+                                if response.has_focus() {
+                                    if let Some(state) = TextEdit::load_state(ctx, response.id) {
+                                        if let Some(cursor_range) = state.cursor.range(&output.galley) {
+                                            let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
+                                            let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
+                                            ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
+                                                egui::Rect::from_min_size(
+                                                    screen_pos,
+                                                    egui::vec2(1.0, font_size),
+                                                ),
+                                            ));
+                                        }
+                                    }
                                 }
-                            }
-                        }
 
-                        if response.changed() {
-                            self.doc_manager.mark_modified();
-                        }
+                                if response.changed() {
+                                    self.doc_manager.mark_modified();
+                                }
 
-                        ui.add_space(200.0);
+                                ui.add_space(200.0);
+                            });
+                        });
                     });
-                });
             });
     }
 

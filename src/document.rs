@@ -68,6 +68,10 @@ impl Document {
         self.modified
     }
 
+    pub fn is_empty_untitled(&self) -> bool {
+        self.path.is_none() && self.text.is_empty() && !self.modified
+    }
+
     pub fn mark_modified(&mut self) {
         self.modified = true;
         self.modified_at = Local::now();
@@ -123,8 +127,14 @@ impl DocumentManager {
 
     pub fn open_document(&mut self, path: &Path) -> Result<(), std::io::Error> {
         let doc = Document::from_path(path)?;
-        self.documents.push(doc);
-        self.current = self.documents.len() - 1;
+        // If the only open document is an empty untitled, replace it
+        if self.documents.len() == 1 && self.documents[0].is_empty_untitled() {
+            self.documents[0] = doc;
+            self.current = 0;
+        } else {
+            self.documents.push(doc);
+            self.current = self.documents.len() - 1;
+        }
         Ok(())
     }
 
