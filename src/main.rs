@@ -6,6 +6,7 @@
 mod app;
 mod document;
 mod settings;
+mod sounds;
 mod theme;
 mod toolbar;
 mod word_count;

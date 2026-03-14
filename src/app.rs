@@ -2,6 +2,7 @@
 
 use crate::document::DocumentManager;
 use crate::settings::{BgImageMode, Settings};
+use crate::sounds::AudioPlayer;
 use crate::theme::Theme;
 use crate::toolbar::Toolbar;
 use crate::word_count::WordCountBar;
@@ -47,6 +48,7 @@ pub struct RustWriterApp {
 
     // Sound effects
     typing_sounds_enabled: bool,
+    audio: Option<AudioPlayer>,
 
     // Status
     status_message: Option<(String, f32)>, // message + display timer
@@ -84,6 +86,7 @@ impl RustWriterApp {
             daily_goal_enabled: settings.daily_goal_enabled,
             session_words_typed: 0,
             typing_sounds_enabled: settings.typing_sounds,
+            audio: AudioPlayer::new(),
             status_message: None,
         }
     }
@@ -539,6 +542,16 @@ impl RustWriterApp {
 
                             if response.changed() {
                                 self.doc_manager.mark_modified();
+                                if self.typing_sounds_enabled {
+                                    if let Some(ref audio) = self.audio {
+                                        let enter_pressed = ctx.input(|i| i.key_pressed(Key::Enter));
+                                        if enter_pressed {
+                                            audio.play_return();
+                                        } else {
+                                            audio.play_click();
+                                        }
+                                    }
+                                }
                             }
 
                             ui.add_space(200.0);
