@@ -32,6 +32,15 @@ directories = "5.0"
 log = "0.4"
 env_logger = "0.11"
 
+[package.metadata.deb]
+section = "editors"
+priority = "optional"
+assets = [
+    { source = "target/release/rustwriter", dest = "usr/bin/", mode = "755" },
+    { source = "rustwriter.desktop", dest = "usr/share/applications/", mode = "644" },
+    { source = "assets/icon.png", dest = "usr/share/pixmaps/rustwriter.png", mode = "644" },
+]
+
 [profile.release]
 opt-level = 3
 lto = true

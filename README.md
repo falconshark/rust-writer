@@ -2,6 +2,8 @@
 
 A fullscreen, distraction-free writing application inspired by FocusWriter — rewritten in **Rust**.
 
+In fact, it just a vibe coding toys, so it maybe had many many bug, but still welcome to open issues or pull request.
+
 ## Features
 
 - Fullscreen writing mode (F11)
@@ -13,7 +15,6 @@ A fullscreen, distraction-free writing application inspired by FocusWriter — r
 - Word / character count
 - Daily word goal with progress bar
 - Typewriter mode (cursor centering)
-- Focus mode (dim other paragraphs)
 - Native file dialogs (rfd)
 - Persistent settings (TOML)
 - Keyboard shortcuts
