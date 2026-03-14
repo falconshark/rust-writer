@@ -45,7 +45,7 @@ impl Default for Settings {
             daily_goal_enabled: false,
             daily_goal_words: 1000,
             theme_name: "Night Owl".to_string(),
-            current_theme: Theme::night_owl(),
+            current_theme: Theme::default(),
         }
     }
 }
@@ -63,7 +63,7 @@ impl Settings {
                     if let Ok(mut s) = toml::from_str::<Settings>(&content) {
                         // Restore theme from name
                         s.current_theme = Theme::by_name(&s.theme_name)
-                            .unwrap_or_else(Theme::night_owl);
+                            .unwrap_or_default();
                         return s;
                     }
                 }

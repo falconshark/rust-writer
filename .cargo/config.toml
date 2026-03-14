@@ -1,0 +1,4 @@
+[target.x86_64-unknown-linux-gnu]
+# Use mold linker if installed (sudo apt install mold) for ~3x faster linking
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]

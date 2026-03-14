@@ -1,6 +1,5 @@
 // app.rs - Main application state and UI rendering
 
-use crate::background::Background;
 use crate::document::DocumentManager;
 use crate::settings::Settings;
 use crate::theme::Theme;
@@ -14,7 +13,6 @@ pub struct RustWriterApp {
     // Core state
     doc_manager: DocumentManager,
     settings: Settings,
-    background: Background,
 
     // UI state
     toolbar: Toolbar,
@@ -27,11 +25,10 @@ pub struct RustWriterApp {
     // Dialogs
     show_settings_dialog: bool,
     show_about_dialog: bool,
-    show_background_picker: bool,
     show_theme_editor: bool,
     show_shortcuts_dialog: bool,
 
-    // Theme
+    // Theme — owns all visual configuration (background + paper + text)
     current_theme: Theme,
 
     // Writing area state
@@ -66,7 +63,6 @@ impl RustWriterApp {
         Self {
             doc_manager,
             settings: settings.clone(),
-            background: Background::new(),
             toolbar: Toolbar::new(),
             word_count_bar: WordCountBar::new(),
             is_fullscreen: false,
@@ -75,7 +71,6 @@ impl RustWriterApp {
             toolbar_visible_timer: 0.0,
             show_settings_dialog: false,
             show_about_dialog: false,
-            show_background_picker: false,
             show_theme_editor: false,
             show_shortcuts_dialog: false,
             current_theme,
@@ -280,12 +275,7 @@ impl RustWriterApp {
 
                     ui.separator();
 
-                    // Background picker
-                    if ui.button("🖼 Background").clicked() {
-                        self.show_background_picker = true;
-                    }
-
-                    // Theme
+                    // Theme (includes background + paper + text settings)
                     if ui.button("🎨 Theme").clicked() {
                         self.show_theme_editor = true;
                     }
@@ -328,9 +318,10 @@ impl RustWriterApp {
                     } else {
                         format!("📝 {}", title)
                     };
+                    let ui_color = self.current_theme.ui_text_color();
                     ui.label(
                         RichText::new(display)
-                            .color(self.current_theme.text_color)
+                            .color(ui_color)
                             .small(),
                     );
 
@@ -341,7 +332,7 @@ impl RustWriterApp {
                         let wc = doc.word_count();
                         ui.label(
                             RichText::new(format!("Words: {}", wc))
-                                .color(self.current_theme.text_color)
+                                .color(ui_color)
                                 .small(),
                         );
 
@@ -351,7 +342,7 @@ impl RustWriterApp {
                         let cc = doc.char_count();
                         ui.label(
                             RichText::new(format!("Chars: {}", cc))
-                                .color(self.current_theme.text_color)
+                                .color(ui_color)
                                 .small(),
                         );
                     }
@@ -380,7 +371,7 @@ impl RustWriterApp {
                                 "{}/{}",
                                 self.session_words_typed, self.daily_goal_words
                             ))
-                            .color(self.current_theme.text_color)
+                            .color(ui_color)
                             .small(),
                         );
                     }
@@ -410,13 +401,16 @@ impl RustWriterApp {
                 ui.horizontal(|ui| {
                     let count = self.doc_manager.document_count();
                     let current = self.doc_manager.current_index();
+                    let ui_color = self.current_theme.ui_text_color();
                     for i in 0..count {
                         let title = self.doc_manager.document_title(i);
                         let is_active = i == current;
                         let color = if is_active {
-                            Color32::WHITE
+                            ui_color
                         } else {
-                            Color32::GRAY
+                            Color32::from_rgba_unmultiplied(
+                                ui_color.r(), ui_color.g(), ui_color.b(), 140,
+                            )
                         };
                         if ui
                             .selectable_label(is_active, RichText::new(&title).color(color))
@@ -443,12 +437,18 @@ impl RustWriterApp {
         let font_family = egui::FontFamily::Proportional;
         let theme = self.current_theme.clone();
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none())
-            .show(ctx, |ui| {
-                // 繪製背景
-                self.background.paint(ui.painter(), ui.max_rect());
+        // Build paper color with opacity
+        let paper_color = Color32::from_rgba_unmultiplied(
+            theme.paper_color.r(),
+            theme.paper_color.g(),
+            theme.paper_color.b(),
+            (theme.paper_opacity * 255.0) as u8,
+        );
 
+        // Layer 1: background — use Frame fill so it covers the full panel reliably
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().fill(theme.bg_color))
+            .show(ctx, |ui| {
                 let available_width = ui.available_width();
                 let left_pad = ((available_width - text_width) / 2.0).max(20.0);
 
@@ -461,48 +461,47 @@ impl RustWriterApp {
                                 ui.set_max_width(text_width);
                                 ui.add_space(30.0);
 
-                                // 繪製紙張背景
-                                let paper_rect = ui.available_rect_before_wrap();
-                                ui.painter().rect_filled(
-                                    paper_rect.expand2(Vec2::new(20.0, 0.0)),
-                                    4.0,
-                                    theme.paper_color,
-                                );
+                                // Layer 2: paper — use egui Frame so the fill is bounded
+                                // correctly even inside an infinite-height ScrollArea.
+                                let paper_frame = egui::Frame::none()
+                                    .fill(paper_color)
+                                    .rounding(4.0)
+                                    .inner_margin(egui::Margin::symmetric(20.0, 20.0));
 
-                                let text = self.doc_manager.current_text_mut();
+                                paper_frame.show(ui, |ui| {
+                                    let text = self.doc_manager.current_text_mut();
 
-                                let text_edit = TextEdit::multiline(text)
-                                    .font(FontId::new(font_size, font_family))
-                                    .text_color(theme.text_color)
-                                    .frame(false)
-                                    .desired_width(text_width)
-                                    .desired_rows(40)
-                                    .margin(egui::Margin::symmetric(20.0, 20.0))
-                                    .lock_focus(true);
+                                    let text_edit = TextEdit::multiline(text)
+                                        .font(FontId::new(font_size, font_family))
+                                        .text_color(theme.text_color)
+                                        .frame(false)
+                                        .desired_width(text_width)
+                                        .desired_rows(40)
+                                        .lock_focus(true);
 
-                                let output = text_edit.show(ui);
-                                let response = output.response;
+                                    let output = text_edit.show(ui);
+                                    let response = output.response;
 
-                                // Update IME cursor area so Chinese/Japanese/Korean input
-                                // methods know where to display the composition window.
-                                if response.has_focus() {
-                                    if let Some(state) = TextEdit::load_state(ctx, response.id) {
-                                        if let Some(cursor_range) = state.cursor.range(&output.galley) {
-                                            let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                            let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
-                                            ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                                egui::Rect::from_min_size(
-                                                    screen_pos,
-                                                    egui::vec2(1.0, font_size),
-                                                ),
-                                            ));
+                                    // Update IME cursor area for CJK input methods.
+                                    if response.has_focus() {
+                                        if let Some(state) = TextEdit::load_state(ctx, response.id) {
+                                            if let Some(cursor_range) = state.cursor.range(&output.galley) {
+                                                let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
+                                                let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
+                                                ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
+                                                    egui::Rect::from_min_size(
+                                                        screen_pos,
+                                                        egui::vec2(1.0, font_size),
+                                                    ),
+                                                ));
+                                            }
                                         }
                                     }
-                                }
 
-                                if response.changed() {
-                                    self.doc_manager.mark_modified();
-                                }
+                                    if response.changed() {
+                                        self.doc_manager.mark_modified();
+                                    }
+                                });
 
                                 ui.add_space(200.0);
                             });
@@ -512,115 +511,6 @@ impl RustWriterApp {
     }
 
     // ─── Dialogs ─────────────────────────────────────────────────────────────
-
-    fn render_background_picker(&mut self, ctx: &egui::Context) {
-        if !self.show_background_picker {
-            return;
-        }
-
-        let mut open = true;
-        egui::Window::new("🖼 Choose Background")
-            .open(&mut open)
-            .resizable(true)
-            .default_size([500.0, 400.0])
-            .show(ctx, |ui| {
-                ui.heading("Background Type");
-                ui.separator();
-
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(
-                            matches!(
-                                self.background.kind,
-                                super::background::BackgroundKind::SolidColor(_)
-                            ),
-                            "Solid Color",
-                        )
-                        .clicked()
-                    {
-                        self.background.set_solid(Color32::from_rgb(30, 35, 45));
-                    }
-
-                    if ui
-                        .selectable_label(
-                            matches!(
-                                self.background.kind,
-                                super::background::BackgroundKind::Gradient(_, _)
-                            ),
-                            "Gradient",
-                        )
-                        .clicked()
-                    {
-                        self.background.set_gradient(
-                            Color32::from_rgb(20, 20, 40),
-                            Color32::from_rgb(40, 40, 80),
-                        );
-                    }
-
-                    if ui
-                        .selectable_label(
-                            matches!(
-                                self.background.kind,
-                                super::background::BackgroundKind::Image(_)
-                            ),
-                            "Image File",
-                        )
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "gif"])
-                            .pick_file()
-                        {
-                            self.background.load_image(&path, ctx);
-                        }
-                    }
-                });
-
-                ui.separator();
-
-                match &mut self.background.kind {
-                    super::background::BackgroundKind::SolidColor(color) => {
-                        ui.label("Pick a color:");
-                        ui.color_edit_button_srgba(color);
-                    }
-                    super::background::BackgroundKind::Gradient(c1, c2) => {
-                        ui.horizontal(|ui| {
-                            ui.label("Start color:");
-                            ui.color_edit_button_srgba(c1);
-                            ui.label("End color:");
-                            ui.color_edit_button_srgba(c2);
-                        });
-                    }
-                    super::background::BackgroundKind::Image(path) => {
-                        ui.label(format!("Image: {}", path.display()));
-                        if ui.button("Change Image...").clicked() {
-                            if let Some(new_path) = rfd::FileDialog::new()
-                                .add_filter("Images", &["png", "jpg", "jpeg", "bmp"])
-                                .pick_file()
-                            {
-                                self.background.load_image(&new_path, ctx);
-                            }
-                        }
-                    }
-                }
-
-                ui.separator();
-                ui.label("Overlay opacity (paper):");
-                ui.add(egui::Slider::new(
-                    &mut self.background.overlay_opacity,
-                    0.0..=1.0,
-                ));
-
-                ui.separator();
-                if ui.button("Close").clicked() {
-                    self.show_background_picker = false;
-                }
-            });
-
-        if !open {
-            self.show_background_picker = false;
-        }
-    }
 
     fn render_settings_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_settings_dialog {
@@ -727,7 +617,8 @@ impl RustWriterApp {
             .resizable(false)
             .default_size([350.0, 380.0])
             .show(ctx, |ui| {
-                ui.heading("Built-in Themes");
+                // ── Preset themes ──────────────────────────────────────────
+                ui.heading("Presets");
                 ui.horizontal_wrapped(|ui| {
                     for preset in Theme::presets() {
                         if ui.button(&preset.name).clicked() {
@@ -738,30 +629,48 @@ impl RustWriterApp {
                 });
 
                 ui.separator();
-                ui.heading("Custom Colors");
 
+                // ── Background ─────────────────────────────────────────────
+                ui.heading("Background");
                 ui.horizontal(|ui| {
-                    ui.label("Background:  ");
-                    ui.color_edit_button_srgba(&mut self.current_theme.bg_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Paper color: ");
-                    ui.color_edit_button_srgba(&mut self.current_theme.paper_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Text color:  ");
-                    ui.color_edit_button_srgba(&mut self.current_theme.text_color);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Toolbar:     ");
-                    ui.color_edit_button_srgba(&mut self.current_theme.toolbar_bg);
+                    ui.label("Color:");
+                    if ui.color_edit_button_srgba(&mut self.current_theme.bg_color).changed() {
+                        apply_theme_to_ctx(ctx, &self.current_theme);
+                    }
                 });
 
                 ui.separator();
-                if ui.button("Apply Theme").clicked() {
-                    apply_theme_to_ctx(ctx, &self.current_theme);
-                    self.show_status("Theme applied");
-                }
+
+                // ── Paper layer ────────────────────────────────────────────
+                ui.heading("Paper");
+                ui.horizontal(|ui| {
+                    ui.label("Color:");
+                    ui.color_edit_button_srgba(&mut self.current_theme.paper_color);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Opacity:");
+                    ui.add(
+                        egui::Slider::new(&mut self.current_theme.paper_opacity, 0.0..=1.0)
+                            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+                    );
+                });
+
+                ui.separator();
+
+                // ── Text ───────────────────────────────────────────────────
+                ui.heading("Text");
+                ui.horizontal(|ui| {
+                    ui.label("Color:");
+                    if ui.color_edit_button_srgba(&mut self.current_theme.text_color).changed() {
+                        apply_theme_to_ctx(ctx, &self.current_theme);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Toolbar:");
+                    if ui.color_edit_button_srgba(&mut self.current_theme.toolbar_bg).changed() {
+                        apply_theme_to_ctx(ctx, &self.current_theme);
+                    }
+                });
             });
 
         if !open {
@@ -854,7 +763,6 @@ impl eframe::App for RustWriterApp {
         self.render_writing_area(ctx);
 
         // Dialogs (rendered on top)
-        self.render_background_picker(ctx);
         self.render_settings_dialog(ctx);
         self.render_theme_editor(ctx);
         self.render_about_dialog(ctx);
@@ -874,11 +782,35 @@ impl eframe::App for RustWriterApp {
     }
 }
 
+fn luma(c: Color32) -> f32 {
+    0.299 * c.r() as f32 + 0.587 * c.g() as f32 + 0.114 * c.b() as f32
+}
+
 fn apply_theme_to_ctx(ctx: &egui::Context, theme: &Theme) {
-    let mut visuals = egui::Visuals::dark();
+    // Choose light or dark base visuals based on toolbar brightness so that
+    // widget hover states, separators and button text all look correct
+    // on both light and dark toolbars.
+    let mut visuals = if luma(theme.toolbar_bg) > 128.0 {
+        egui::Visuals::light()
+    } else {
+        egui::Visuals::dark()
+    };
+
+    // Toolbar and panel backgrounds
     visuals.panel_fill = theme.toolbar_bg;
-    visuals.window_fill = theme.bg_color;
-    visuals.extreme_bg_color = theme.paper_color;
-    visuals.override_text_color = Some(theme.text_color);
+    // Dialogs/windows use the toolbar color so they blend with the chrome,
+    // NOT the writing-area bg_color.
+    visuals.window_fill = theme.toolbar_bg;
+
+    // Keep TextEdit backgrounds transparent — our paper Frame provides the fill.
+    visuals.extreme_bg_color = Color32::TRANSPARENT;
+
+    // Selection highlight
+    visuals.selection.bg_fill = theme.selection_color;
+
+    // Do NOT set override_text_color here: that would force the paper's dark
+    // text_color onto toolbar buttons and dialog labels (dark-on-dark = unreadable).
+    // The TextEdit uses .text_color(theme.text_color) explicitly.
+
     ctx.set_visuals(visuals);
 }

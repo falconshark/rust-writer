@@ -4,7 +4,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hide console on Windows release
 
 mod app;
-mod background;
 mod document;
 mod settings;
 mod theme;

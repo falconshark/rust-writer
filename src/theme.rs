@@ -6,12 +6,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub name: String,
+    // Background (full-screen layer)
     pub bg_color: Color32,
+    // Paper layer (foreground, sits on top of background)
     pub paper_color: Color32,
+    pub paper_opacity: f32, // 0.0..=1.0
+    // Text
     pub text_color: Color32,
-    pub toolbar_bg: Color32,
     pub selection_color: Color32,
     pub cursor_color: Color32,
+    // UI chrome
+    pub toolbar_bg: Color32,
 }
 
 impl Theme {
@@ -19,11 +24,12 @@ impl Theme {
         Self {
             name: "Night Owl".to_string(),
             bg_color: Color32::from_rgb(17, 21, 28),
-            paper_color: Color32::from_rgba_premultiplied(30, 35, 48, 220),
-            text_color: Color32::from_rgb(214, 222, 235),
+            paper_color: Color32::WHITE,
+            paper_opacity: 0.92,
+            text_color: Color32::from_rgb(30, 35, 48),
             toolbar_bg: Color32::from_rgb(15, 18, 25),
             selection_color: Color32::from_rgb(84, 109, 160),
-            cursor_color: Color32::WHITE,
+            cursor_color: Color32::from_rgb(84, 109, 160),
         }
     }
 
@@ -31,8 +37,9 @@ impl Theme {
         Self {
             name: "Solarized Dark".to_string(),
             bg_color: Color32::from_rgb(0, 43, 54),
-            paper_color: Color32::from_rgba_premultiplied(7, 54, 66, 230),
-            text_color: Color32::from_rgb(131, 148, 150),
+            paper_color: Color32::WHITE,
+            paper_opacity: 0.9,
+            text_color: Color32::from_rgb(10, 55, 68),
             toolbar_bg: Color32::from_rgb(0, 33, 44),
             selection_color: Color32::from_rgb(42, 161, 152),
             cursor_color: Color32::from_rgb(181, 137, 0),
@@ -43,8 +50,9 @@ impl Theme {
         Self {
             name: "Solarized Light".to_string(),
             bg_color: Color32::from_rgb(253, 246, 227),
-            paper_color: Color32::from_rgba_premultiplied(238, 232, 213, 240),
-            text_color: Color32::from_rgb(101, 123, 131),
+            paper_color: Color32::from_rgb(238, 232, 213),
+            paper_opacity: 1.0,
+            text_color: Color32::from_rgb(88, 110, 117),
             toolbar_bg: Color32::from_rgb(238, 232, 213),
             selection_color: Color32::from_rgb(147, 161, 161),
             cursor_color: Color32::from_rgb(88, 110, 117),
@@ -54,10 +62,11 @@ impl Theme {
     pub fn typewriter() -> Self {
         Self {
             name: "Typewriter".to_string(),
-            bg_color: Color32::from_rgb(210, 195, 166),
-            paper_color: Color32::from_rgba_premultiplied(225, 213, 185, 245),
+            bg_color: Color32::from_rgb(101, 76, 40),
+            paper_color: Color32::from_rgb(250, 245, 230),
+            paper_opacity: 1.0,
             text_color: Color32::from_rgb(42, 30, 15),
-            toolbar_bg: Color32::from_rgb(190, 175, 148),
+            toolbar_bg: Color32::from_rgb(80, 58, 28),
             selection_color: Color32::from_rgb(160, 130, 80),
             cursor_color: Color32::from_rgb(42, 30, 15),
         }
@@ -67,11 +76,12 @@ impl Theme {
         Self {
             name: "Forest".to_string(),
             bg_color: Color32::from_rgb(20, 38, 25),
-            paper_color: Color32::from_rgba_premultiplied(28, 50, 33, 225),
-            text_color: Color32::from_rgb(168, 210, 148),
+            paper_color: Color32::WHITE,
+            paper_opacity: 0.93,
+            text_color: Color32::from_rgb(25, 50, 30),
             toolbar_bg: Color32::from_rgb(15, 28, 18),
             selection_color: Color32::from_rgb(60, 130, 70),
-            cursor_color: Color32::from_rgb(120, 200, 100),
+            cursor_color: Color32::from_rgb(60, 130, 70),
         }
     }
 
@@ -79,19 +89,21 @@ impl Theme {
         Self {
             name: "Midnight Blue".to_string(),
             bg_color: Color32::from_rgb(10, 12, 40),
-            paper_color: Color32::from_rgba_premultiplied(18, 22, 60, 220),
-            text_color: Color32::from_rgb(180, 200, 240),
+            paper_color: Color32::WHITE,
+            paper_opacity: 0.93,
+            text_color: Color32::from_rgb(20, 25, 70),
             toolbar_bg: Color32::from_rgb(8, 10, 30),
             selection_color: Color32::from_rgb(60, 90, 160),
-            cursor_color: Color32::from_rgb(120, 160, 240),
+            cursor_color: Color32::from_rgb(80, 120, 220),
         }
     }
 
     pub fn paper_white() -> Self {
         Self {
             name: "Paper White".to_string(),
-            bg_color: Color32::from_rgb(230, 228, 222),
-            paper_color: Color32::from_rgba_premultiplied(255, 253, 245, 255),
+            bg_color: Color32::from_rgb(200, 198, 192),
+            paper_color: Color32::from_rgb(255, 253, 245),
+            paper_opacity: 1.0,
             text_color: Color32::from_rgb(35, 35, 35),
             toolbar_bg: Color32::from_rgb(215, 213, 208),
             selection_color: Color32::from_rgb(180, 200, 230),
@@ -103,8 +115,9 @@ impl Theme {
         Self {
             name: "Dracula".to_string(),
             bg_color: Color32::from_rgb(40, 42, 54),
-            paper_color: Color32::from_rgba_premultiplied(50, 52, 70, 230),
-            text_color: Color32::from_rgb(248, 248, 242),
+            paper_color: Color32::WHITE,
+            paper_opacity: 0.92,
+            text_color: Color32::from_rgb(55, 57, 75),
             toolbar_bg: Color32::from_rgb(33, 34, 44),
             selection_color: Color32::from_rgb(139, 92, 246),
             cursor_color: Color32::from_rgb(80, 250, 123),
@@ -127,6 +140,19 @@ impl Theme {
 
     pub fn by_name(name: &str) -> Option<Theme> {
         Self::presets().into_iter().find(|t| t.name == name)
+    }
+
+    /// Returns a readable text color for toolbar/dialog backgrounds —
+    /// light text on dark toolbars, dark text on light toolbars.
+    pub fn ui_text_color(&self) -> Color32 {
+        let l = 0.299 * self.toolbar_bg.r() as f32
+            + 0.587 * self.toolbar_bg.g() as f32
+            + 0.114 * self.toolbar_bg.b() as f32;
+        if l > 128.0 {
+            Color32::from_rgb(40, 40, 40)
+        } else {
+            Color32::from_rgb(210, 210, 210)
+        }
     }
 }
 
