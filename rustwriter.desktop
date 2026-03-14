@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Rust Writer
+Comment=Fullscreen distraction-free writing app
+Exec=rustwriter
+Icon=rustwriter
+Type=Application
+Categories=Office;TextEditor;
+Keywords=writing;text;editor;focus;
+StartupNotify=true
