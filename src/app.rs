@@ -860,6 +860,7 @@ impl eframe::App for RustWriterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dt = ctx.input(|i| i.unstable_dt).min(0.1);
 
+
         // Enable IME for CJK input methods (GCIN, ibus, fcitx).
         // egui-winit calls window.set_ime_allowed() based on this command.
         // Must be sent every frame while a TextEdit is potentially focused.

@@ -12,7 +12,7 @@ egui = "0.28"
 egui_extras = { version = "0.28", features = ["image", "file"] }
 
 # Image loading
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
 
 # Serialization for settings/config
 serde = { version = "1.0", features = ["derive"] }
