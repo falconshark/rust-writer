@@ -33,6 +33,7 @@ pub struct RustWriterApp {
 
     // Writing area state
     scroll_offset: f32,
+    target_scroll_y: Option<f32>, // set to request a programmatic scroll
     typewriter_mode: bool, // Scroll to keep cursor centered
 
     // Auto-save
@@ -75,6 +76,7 @@ impl RustWriterApp {
             show_shortcuts_dialog: false,
             current_theme,
             scroll_offset: 0.0,
+            target_scroll_y: None,
             typewriter_mode: settings.typewriter_mode,
             auto_save_timer: 0.0,
             auto_save_interval: settings.auto_save_interval,
@@ -133,6 +135,14 @@ impl RustWriterApp {
         // Ctrl+Shift+Tab - Prev document
         if input.key_pressed(Key::Tab) && input.modifiers.ctrl && input.modifiers.shift {
             self.doc_manager.prev_document();
+        }
+        // Ctrl+Home - scroll to top
+        if input.key_pressed(Key::Home) && input.modifiers.ctrl {
+            self.target_scroll_y = Some(0.0);
+        }
+        // Ctrl+End - scroll to bottom
+        if input.key_pressed(Key::End) && input.modifiers.ctrl {
+            self.target_scroll_y = Some(f32::MAX);
         }
     }
 
@@ -445,68 +455,91 @@ impl RustWriterApp {
             (theme.paper_opacity * 255.0) as u8,
         );
 
-        // Layer 1: background — use Frame fill so it covers the full panel reliably
+        // Layer 1: background
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(theme.bg_color))
             .show(ctx, |ui| {
-                let available_width = ui.available_width();
-                let left_pad = ((available_width - text_width) / 2.0).max(20.0);
+                let available_height = ui.available_height();
+                // Paper outer width = text_width + left inner margin + right inner margin (20px each)
+                let paper_outer_width = text_width + 2.0 * 20.0;
 
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.add_space(left_pad);
-                            ui.vertical(|ui| {
-                                ui.set_max_width(text_width);
-                                ui.add_space(30.0);
+                // Gap between paper edges and background
+                let bg_pad = 16.0;
+                // Inner margin of the paper frame (padding inside paper)
+                let v_margin = 20.0;
+                // Inner height available to the scroll area inside the paper
+                let inner_height = (available_height - 2.0 * bg_pad - 2.0 * v_margin).max(100.0);
 
-                                // Layer 2: paper — use egui Frame so the fill is bounded
-                                // correctly even inside an infinite-height ScrollArea.
-                                let paper_frame = egui::Frame::none()
-                                    .fill(paper_color)
-                                    .rounding(4.0)
-                                    .inner_margin(egui::Margin::symmetric(20.0, 20.0));
+                // Compute the paper rect centered in the panel with top/bottom gap
+                let panel_rect = ui.available_rect_before_wrap();
+                let center_x = panel_rect.center().x;
+                let paper_x = (center_x - paper_outer_width / 2.0).max(panel_rect.left());
+                let paper_rect = egui::Rect::from_min_size(
+                    egui::pos2(paper_x, panel_rect.top() + bg_pad),
+                    egui::vec2(
+                        paper_outer_width.min(panel_rect.width()),
+                        (panel_rect.height() - 2.0 * bg_pad).max(100.0),
+                    ),
+                );
 
-                                paper_frame.show(ui, |ui| {
-                                    let text = self.doc_manager.current_text_mut();
+                ui.allocate_ui_at_rect(paper_rect, |ui| {
+                    // Layer 2: paper — fixed to viewport height, scroll happens inside
+                    let paper_frame = egui::Frame::none()
+                        .fill(paper_color)
+                        .rounding(4.0)
+                        .inner_margin(egui::Margin::symmetric(20.0, v_margin));
 
-                                    let text_edit = TextEdit::multiline(text)
-                                        .font(FontId::new(font_size, font_family))
-                                        .text_color(theme.text_color)
-                                        .frame(false)
-                                        .desired_width(text_width)
-                                        .desired_rows(40)
-                                        .lock_focus(true);
+                    paper_frame.show(ui, |ui| {
+                        ui.set_min_height(inner_height);
+                        ui.set_max_height(inner_height);
+                        ui.set_width(text_width);
 
-                                    let output = text_edit.show(ui);
-                                    let response = output.response;
+                        let mut scroll_area = egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .scroll_bar_visibility(
+                                egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                            );
+                        if let Some(y) = self.target_scroll_y.take() {
+                            scroll_area = scroll_area.scroll_offset(egui::Vec2::new(0.0, y));
+                        }
+                        scroll_area.show(ui, |ui| {
+                            let text = self.doc_manager.current_text_mut();
 
-                                    // Update IME cursor area for CJK input methods.
-                                    if response.has_focus() {
-                                        if let Some(state) = TextEdit::load_state(ctx, response.id) {
-                                            if let Some(cursor_range) = state.cursor.range(&output.galley) {
-                                                let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                                let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
-                                                ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                                    egui::Rect::from_min_size(
-                                                        screen_pos,
-                                                        egui::vec2(1.0, font_size),
-                                                    ),
-                                                ));
-                                            }
-                                        }
+                            let text_edit = TextEdit::multiline(text)
+                                .font(FontId::new(font_size, font_family))
+                                .text_color(theme.text_color)
+                                .frame(false)
+                                .desired_width(text_width)
+                                .desired_rows(40)
+                                .lock_focus(true);
+
+                            let output = text_edit.show(ui);
+                            let response = output.response;
+
+                            // Update IME cursor area for CJK input methods.
+                            if response.has_focus() {
+                                if let Some(state) = TextEdit::load_state(ctx, response.id) {
+                                    if let Some(cursor_range) = state.cursor.range(&output.galley) {
+                                        let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
+                                        let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
+                                        ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
+                                            egui::Rect::from_min_size(
+                                                screen_pos,
+                                                egui::vec2(1.0, font_size),
+                                            ),
+                                        ));
                                     }
+                                }
+                            }
 
-                                    if response.changed() {
-                                        self.doc_manager.mark_modified();
-                                    }
-                                });
+                            if response.changed() {
+                                self.doc_manager.mark_modified();
+                            }
 
-                                ui.add_space(200.0);
-                            });
+                            ui.add_space(200.0);
                         });
                     });
+                });
             });
     }
 
