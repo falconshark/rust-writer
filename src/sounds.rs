@@ -3,11 +3,11 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::io::Cursor;
 
-// Embed CC0 typewriter sounds directly into the binary.
-// Source: BigSoundBank (https://bigsoundbank.com), CC0
-// Converted to 16-bit 22050 Hz mono to reduce binary size.
-static KEY_CLICK_WAV: &[u8] = include_bytes!("../assets/sounds/key_click_final.wav");
-static CARRIAGE_RETURN_WAV: &[u8] = include_bytes!("../assets/sounds/carriage_return_small.wav");
+// Embed FocusWriter typewriter sounds directly into the binary.
+// Source: FocusWriter by Graeme Gott (https://github.com/gottcode/focuswriter), GPL-3.0
+// Converted from stereo 44100 Hz to 16-bit 22050 Hz mono to reduce binary size.
+static KEY_CLICK_WAV: &[u8] = include_bytes!("../assets/sounds/keyany_final.wav");
+static CARRIAGE_RETURN_WAV: &[u8] = include_bytes!("../assets/sounds/keyenter_final.wav");
 
 pub struct AudioPlayer {
     // Stream must be kept alive for audio output to work

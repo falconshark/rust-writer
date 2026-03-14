@@ -526,17 +526,17 @@ impl RustWriterApp {
 
                             // Update IME cursor area for CJK input methods.
                             if response.has_focus() {
-                                if let Some(state) = TextEdit::load_state(ctx, response.id) {
-                                    if let Some(cursor_range) = state.cursor.range(&output.galley) {
-                                        let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                        let screen_pos = response.rect.min + cursor_rect.min.to_vec2();
-                                        ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                            egui::Rect::from_min_size(
-                                                screen_pos,
-                                                egui::vec2(1.0, font_size),
-                                            ),
-                                        ));
-                                    }
+                                if let Some(cursor_range) = output.cursor_range {
+                                    let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
+                                    // galley_pos is the actual screen position where the text galley
+                                    // starts drawing — correct even inside a ScrollArea.
+                                    let screen_pos = output.galley_pos + cursor_rect.min.to_vec2();
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
+                                        egui::Rect::from_min_size(
+                                            screen_pos,
+                                            egui::vec2(1.0, font_size),
+                                        ),
+                                    ));
                                 }
                             }
 
