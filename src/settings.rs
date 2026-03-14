@@ -6,6 +6,17 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::fs;
 
+/// How the background image is rendered, matching FocusWriter's 5 modes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum BgImageMode {
+    Tiled,
+    Stretched,
+    Scaled,    // fit within bounds, letterbox (maintain aspect ratio)
+    #[default]
+    Zoomed,    // cover: fill completely, crop excess (maintain aspect ratio)
+    Centered,  // original size, centered
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     // Font
@@ -28,6 +39,12 @@ pub struct Settings {
     // Theme (serialized name)
     pub theme_name: String,
 
+    // Background image
+    #[serde(default)]
+    pub bg_image_path: Option<String>,
+    #[serde(default)]
+    pub bg_image_mode: BgImageMode,
+
     #[serde(skip)]
     pub current_theme: Theme,
 }
@@ -45,6 +62,8 @@ impl Default for Settings {
             daily_goal_enabled: false,
             daily_goal_words: 1000,
             theme_name: "Night Owl".to_string(),
+            bg_image_path: None,
+            bg_image_mode: BgImageMode::default(),
             current_theme: Theme::default(),
         }
     }

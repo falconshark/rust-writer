@@ -1,7 +1,7 @@
 // app.rs - Main application state and UI rendering
 
 use crate::document::DocumentManager;
-use crate::settings::Settings;
+use crate::settings::{BgImageMode, Settings};
 use crate::theme::Theme;
 use crate::toolbar::Toolbar;
 use crate::word_count::WordCountBar;
@@ -472,6 +472,11 @@ impl RustWriterApp {
 
                 // Compute the paper rect centered in the panel with top/bottom gap
                 let panel_rect = ui.available_rect_before_wrap();
+
+                // Draw background image (if set) on top of bg_color, behind the paper
+                if let Some(ref path) = self.settings.bg_image_path.clone() {
+                    paint_bg_image(ui, ctx, path, &self.settings.bg_image_mode, panel_rect);
+                }
                 let center_x = panel_rect.center().x;
                 let paper_x = (center_x - paper_outer_width / 2.0).max(panel_rect.left());
                 let paper_rect = egui::Rect::from_min_size(
@@ -672,6 +677,69 @@ impl RustWriterApp {
                     }
                 });
 
+                ui.add_space(4.0);
+                ui.label("Image:");
+                ui.horizontal(|ui| {
+                    if ui.button("Pick Image…").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "gif"])
+                            .pick_file()
+                        {
+                            self.settings.bg_image_path =
+                                Some(path.to_string_lossy().to_string());
+                            let _ = self.settings.save();
+                        }
+                    }
+                    if self.settings.bg_image_path.is_some() {
+                        if ui.button("Clear").clicked() {
+                            self.settings.bg_image_path = None;
+                            let _ = self.settings.save();
+                        }
+                    }
+                });
+                if let Some(ref path) = self.settings.bg_image_path.clone() {
+                    let name = std::path::Path::new(path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy();
+                    ui.label(RichText::new(name.to_string()).small());
+                    ui.horizontal(|ui| {
+                        ui.label("Mode:");
+                        egui::ComboBox::from_id_source("bg_image_mode")
+                            .selected_text(bg_mode_label(&self.settings.bg_image_mode))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.settings.bg_image_mode,
+                                    BgImageMode::Zoomed,
+                                    "Zoomed (cover)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.bg_image_mode,
+                                    BgImageMode::Scaled,
+                                    "Scaled (fit)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.bg_image_mode,
+                                    BgImageMode::Stretched,
+                                    "Stretched",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.bg_image_mode,
+                                    BgImageMode::Centered,
+                                    "Centered",
+                                );
+                                ui.selectable_value(
+                                    &mut self.settings.bg_image_mode,
+                                    BgImageMode::Tiled,
+                                    "Tiled",
+                                );
+                            });
+                    });
+                    if ui.button("Save").clicked() {
+                        let _ = self.settings.save();
+                    }
+                }
+
                 ui.separator();
 
                 // ── Paper layer ────────────────────────────────────────────
@@ -812,6 +880,97 @@ impl eframe::App for RustWriterApp {
             }
         }
         let _ = self.settings.save();
+    }
+}
+
+fn bg_mode_label(mode: &BgImageMode) -> &'static str {
+    match mode {
+        BgImageMode::Zoomed => "Zoomed (cover)",
+        BgImageMode::Scaled => "Scaled (fit)",
+        BgImageMode::Stretched => "Stretched",
+        BgImageMode::Centered => "Centered",
+        BgImageMode::Tiled => "Tiled",
+    }
+}
+
+fn paint_bg_image(
+    ui: &egui::Ui,
+    ctx: &egui::Context,
+    path: &str,
+    mode: &BgImageMode,
+    rect: egui::Rect,
+) {
+    use egui::load::SizeHint;
+    let uri = format!("file://{}", path);
+    // Hint the loader to decode at screen resolution rather than full resolution.
+    // This dramatically speeds up first-load for large wallpapers (e.g. 4K JPEGs).
+    let hint = SizeHint::Size(rect.width() as u32, rect.height() as u32);
+    match ctx.try_load_texture(&uri, egui::TextureOptions::LINEAR, hint) {
+        Ok(egui::load::TexturePoll::Ready { texture }) => {
+            let iw = texture.size.x;
+            let ih = texture.size.y;
+            let pw = rect.width();
+            let ph = rect.height();
+            let full_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+
+            match mode {
+                BgImageMode::Stretched => {
+                    ui.painter().image(texture.id, rect, full_uv, Color32::WHITE);
+                }
+                BgImageMode::Zoomed => {
+                    // Cover: scale to fill, crop excess symmetrically
+                    let scale = (pw / iw).max(ph / ih);
+                    let sw = iw * scale;
+                    let sh = ih * scale;
+                    let u0 = (sw - pw) / (2.0 * sw);
+                    let v0 = (sh - ph) / (2.0 * sh);
+                    let uv = egui::Rect::from_min_max(
+                        egui::pos2(u0, v0),
+                        egui::pos2(1.0 - u0, 1.0 - v0),
+                    );
+                    ui.painter().image(texture.id, rect, uv, Color32::WHITE);
+                }
+                BgImageMode::Scaled => {
+                    // Fit: letterbox, maintain aspect ratio
+                    let scale = (pw / iw).min(ph / ih);
+                    let dw = iw * scale;
+                    let dh = ih * scale;
+                    let draw_rect =
+                        egui::Rect::from_center_size(rect.center(), egui::vec2(dw, dh));
+                    ui.painter().image(texture.id, draw_rect, full_uv, Color32::WHITE);
+                }
+                BgImageMode::Centered => {
+                    let draw_rect =
+                        egui::Rect::from_center_size(rect.center(), egui::vec2(iw, ih));
+                    ui.painter().image(texture.id, draw_rect, full_uv, Color32::WHITE);
+                }
+                BgImageMode::Tiled => {
+                    let mut x = rect.left();
+                    while x < rect.right() {
+                        let mut y = rect.top();
+                        while y < rect.bottom() {
+                            let cw = (rect.right() - x).min(iw);
+                            let ch = (rect.bottom() - y).min(ih);
+                            let tile_rect = egui::Rect::from_min_size(
+                                egui::pos2(x, y),
+                                egui::vec2(cw, ch),
+                            );
+                            let uv = egui::Rect::from_min_max(
+                                egui::pos2(0.0, 0.0),
+                                egui::pos2(cw / iw, ch / ih),
+                            );
+                            ui.painter().image(texture.id, tile_rect, uv, Color32::WHITE);
+                            y += ih;
+                        }
+                        x += iw;
+                    }
+                }
+            }
+        }
+        Ok(egui::load::TexturePoll::Pending { .. }) => {
+            ctx.request_repaint();
+        }
+        Err(_) => {}
     }
 }
 
