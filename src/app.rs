@@ -400,10 +400,6 @@ impl RustWriterApp {
     }
 
     fn render_document_tabs(&mut self, ctx: &egui::Context) {
-        if self.doc_manager.document_count() <= 1 {
-            return;
-        }
-
         egui::TopBottomPanel::top("doc_tabs")
             .frame(egui::Frame {
                 fill: self.current_theme.toolbar_bg.gamma_multiply(0.8),
