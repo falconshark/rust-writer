@@ -31,6 +31,8 @@ pub struct Settings {
     pub typewriter_mode: bool,
     pub auto_save_interval: f32, // seconds
     pub typing_sounds: bool,
+    #[serde(default = "Settings::default_sound_volume")]
+    pub sound_volume: f32,
 
     // Daily goal
     pub daily_goal_enabled: bool,
@@ -45,7 +47,7 @@ pub struct Settings {
     #[serde(default)]
     pub bg_image_mode: BgImageMode,
 
-    #[serde(skip)]
+    #[serde(default)]
     pub current_theme: Theme,
 }
 
@@ -59,6 +61,7 @@ impl Default for Settings {
             typewriter_mode: true,
             auto_save_interval: 60.0,
             typing_sounds: false,
+            sound_volume: Self::default_sound_volume(),
             daily_goal_enabled: false,
             daily_goal_words: 1000,
             theme_name: "Night Owl".to_string(),
@@ -70,6 +73,8 @@ impl Default for Settings {
 }
 
 impl Settings {
+    fn default_sound_volume() -> f32 { 2.0 }
+
     pub fn config_path() -> Option<PathBuf> {
         ProjectDirs::from("com", "focuswriter", "focuswriter-rs")
             .map(|dirs| dirs.config_dir().join("settings.toml"))
@@ -80,9 +85,13 @@ impl Settings {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(mut s) = toml::from_str::<Settings>(&content) {
-                        // Restore theme from name
-                        s.current_theme = Theme::by_name(&s.theme_name)
-                            .unwrap_or_default();
+                        // For old config files that pre-date full theme serialization,
+                        // current_theme will deserialize as Theme::default(). In that
+                        // case fall back to looking up the preset by name.
+                        if s.current_theme == Theme::default() && s.theme_name != Theme::default().name {
+                            s.current_theme = Theme::by_name(&s.theme_name)
+                                .unwrap_or_default();
+                        }
                         return s;
                     }
                 }

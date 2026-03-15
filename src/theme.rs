@@ -3,7 +3,7 @@
 use eframe::egui::Color32;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Theme {
     pub name: String,
     // Background (full-screen layer)

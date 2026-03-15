@@ -11,8 +11,8 @@ static KEY_CLICK_WAV: &[u8] = include_bytes!("../assets/sounds/keyany_final.wav"
 static CARRIAGE_RETURN_WAV: &[u8] = include_bytes!("../assets/sounds/keyenter_final.wav");
 
 enum AudioCommand {
-    Click,
-    Return,
+    Click(f32),
+    Return(f32),
 }
 
 /// Handle to a background audio thread. Cheap to clone-send commands to.
@@ -33,14 +33,15 @@ impl AudioPlayer {
                 Err(_) => return,
             };
             for cmd in rx {
-                let data: &'static [u8] = match cmd {
-                    AudioCommand::Click => KEY_CLICK_WAV,
-                    AudioCommand::Return => CARRIAGE_RETURN_WAV,
+                let (data, volume): (&'static [u8], f32) = match cmd {
+                    AudioCommand::Click(v) => (KEY_CLICK_WAV, v),
+                    AudioCommand::Return(v) => (CARRIAGE_RETURN_WAV, v),
                 };
                 let sink = match Sink::try_new(&handle) {
                     Ok(s) => s,
                     Err(_) => continue,
                 };
+                sink.set_volume(volume);
                 if let Ok(decoder) = Decoder::new(Cursor::new(data)) {
                     sink.append(decoder);
                     sink.detach();
@@ -50,11 +51,11 @@ impl AudioPlayer {
         Some(Self { sender: tx })
     }
 
-    pub fn play_click(&self) {
-        let _ = self.sender.try_send(AudioCommand::Click);
+    pub fn play_click(&self, volume: f32) {
+        let _ = self.sender.try_send(AudioCommand::Click(volume));
     }
 
-    pub fn play_return(&self) {
-        let _ = self.sender.try_send(AudioCommand::Return);
+    pub fn play_return(&self, volume: f32) {
+        let _ = self.sender.try_send(AudioCommand::Return(volume));
     }
 }

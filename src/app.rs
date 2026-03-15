@@ -50,6 +50,9 @@ pub struct RustWriterApp {
     typing_sounds_enabled: bool,
     audio: Option<AudioPlayer>,
 
+    // IME state — track focus to avoid sending IMEAllowed every frame
+    ime_focused: bool,
+
     // Status
     status_message: Option<(String, f32)>, // message + display timer
 }
@@ -87,6 +90,7 @@ impl RustWriterApp {
             session_words_typed: 0,
             typing_sounds_enabled: settings.typing_sounds,
             audio: AudioPlayer::new(),
+            ime_focused: false,
             status_message: None,
         }
     }
@@ -169,6 +173,11 @@ impl RustWriterApp {
                 Err(e) => self.show_status(&format!("Error opening file: {}", e)),
             }
         }
+    }
+
+    fn save_settings(&mut self) {
+        self.settings.current_theme = self.current_theme.clone();
+        let _ = self.settings.save();
     }
 
     fn save_current_document(&mut self) {
@@ -509,6 +518,36 @@ impl RustWriterApp {
                         scroll_area.show(ui, |ui| {
                             let text = self.doc_manager.current_text_mut();
 
+                            // Detect IME composition (preedit in progress).
+                            let ime_composing = ctx.input(|i| {
+                                i.events.iter().any(|e| {
+                                    matches!(e, egui::Event::Ime(egui::ImeEvent::Preedit(_)))
+                                })
+                            });
+
+                            // During IME composition, filter out cursor-movement keys so
+                            // they are used only for IME candidate navigation, not for
+                            // moving the text cursor.
+                            if ime_composing {
+                                ctx.input_mut(|i| {
+                                    i.events.retain(|e| {
+                                        if let egui::Event::Key { key, pressed: true, .. } = e {
+                                            !matches!(
+                                                key,
+                                                egui::Key::ArrowUp
+                                                    | egui::Key::ArrowDown
+                                                    | egui::Key::ArrowLeft
+                                                    | egui::Key::ArrowRight
+                                                    | egui::Key::Home
+                                                    | egui::Key::End
+                                            )
+                                        } else {
+                                            true
+                                        }
+                                    });
+                                });
+                            }
+
                             let text_edit = TextEdit::multiline(text)
                                 .font(FontId::new(font_size, font_family))
                                 .text_color(theme.text_color)
@@ -520,12 +559,17 @@ impl RustWriterApp {
                             let output = text_edit.show(ui);
                             let response = output.response;
 
-                            // Update IME cursor area for CJK input methods.
-                            if response.has_focus() {
+                            // Update IME state for CJK input methods.
+                            // Only send IMEAllowed when focus changes to avoid
+                            // resetting GCIN's cursor position every frame.
+                            let focused = response.has_focus();
+                            if focused != self.ime_focused {
+                                self.ime_focused = focused;
+                                ctx.send_viewport_cmd(egui::ViewportCommand::IMEAllowed(focused));
+                            }
+                            if focused {
                                 if let Some(cursor_range) = output.cursor_range {
                                     let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                    // galley_pos is the actual screen position where the text galley
-                                    // starts drawing — correct even inside a ScrollArea.
                                     let screen_pos = output.galley_pos + cursor_rect.min.to_vec2();
                                     ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
                                         egui::Rect::from_min_size(
@@ -538,13 +582,14 @@ impl RustWriterApp {
 
                             if response.changed() {
                                 self.doc_manager.mark_modified();
-                                if self.typing_sounds_enabled {
+                                if self.typing_sounds_enabled && !ime_composing {
                                     if let Some(ref audio) = self.audio {
+                                        let volume = self.settings.sound_volume;
                                         let enter_pressed = ctx.input(|i| i.key_pressed(Key::Enter));
                                         if enter_pressed {
-                                            audio.play_return();
+                                            audio.play_return(volume);
                                         } else {
-                                            audio.play_click();
+                                            audio.play_click(volume);
                                         }
                                     }
                                 }
@@ -617,6 +662,15 @@ impl RustWriterApp {
                     self.typewriter_mode = self.settings.typewriter_mode;
                     ui.checkbox(&mut self.settings.typing_sounds, "Typing sound effects");
                     self.typing_sounds_enabled = self.settings.typing_sounds;
+                    if self.settings.typing_sounds {
+                        ui.horizontal(|ui| {
+                            ui.label("Volume:");
+                            ui.add(
+                                egui::Slider::new(&mut self.settings.sound_volume, 0.0..=4.0)
+                                    .step_by(0.1),
+                            );
+                        });
+                    }
 
                     ui.separator();
 
@@ -641,7 +695,7 @@ impl RustWriterApp {
                     ui.separator();
 
                     if ui.button("Save Settings").clicked() {
-                        let _ = self.settings.save();
+                        self.save_settings();
                         self.show_status("Settings saved");
                         self.show_settings_dialog = false;
                     }
@@ -696,13 +750,13 @@ impl RustWriterApp {
                         {
                             self.settings.bg_image_path =
                                 Some(path.to_string_lossy().to_string());
-                            let _ = self.settings.save();
+                            self.save_settings();
                         }
                     }
                     if self.settings.bg_image_path.is_some() {
                         if ui.button("Clear").clicked() {
                             self.settings.bg_image_path = None;
-                            let _ = self.settings.save();
+                            self.save_settings();
                         }
                     }
                 });
@@ -745,7 +799,7 @@ impl RustWriterApp {
                             });
                     });
                     if ui.button("Save").clicked() {
-                        let _ = self.settings.save();
+                        self.save_settings();
                     }
                 }
 
@@ -857,11 +911,6 @@ impl eframe::App for RustWriterApp {
         let dt = ctx.input(|i| i.unstable_dt).min(0.1);
 
 
-        // Enable IME for CJK input methods (GCIN, ibus, fcitx).
-        // egui-winit calls window.set_ime_allowed() based on this command.
-        // Must be sent every frame while a TextEdit is potentially focused.
-        ctx.send_viewport_cmd(egui::ViewportCommand::IMEAllowed(true));
-
         // Timers and background logic
         self.tick_timers(dt);
         self.handle_keyboard_shortcuts(ctx);
@@ -889,7 +938,7 @@ impl eframe::App for RustWriterApp {
                 let _ = doc.save();
             }
         }
-        let _ = self.settings.save();
+        self.save_settings();
     }
 }
 
