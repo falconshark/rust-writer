@@ -35,6 +35,13 @@ rodio = "0.17"
 log = "0.4"
 env_logger = "0.11"
 
+[package.metadata.bundle]
+name = "RustWriter"
+identifier = "com.rustwriter.app"
+icon = ["assets/icon.png"]
+category = "public.app-category.productivity"
+short_description = "A fullscreen distraction-free writing app inspired by FocusWriter"
+
 [package.metadata.deb]
 section = "editors"
 priority = "optional"

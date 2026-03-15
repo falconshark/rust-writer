@@ -56,3 +56,53 @@ jobs:
         with:
           files: ${{ steps.deb_path.outputs.path }}
           generate_release_notes: true
+
+  build-macos:
+    name: Build macOS .app
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle --locked
+
+      - name: Build arm64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          lipo -create -output target/release/rustwriter \
+            target/aarch64-apple-darwin/release/rustwriter \
+            target/x86_64-apple-darwin/release/rustwriter
+
+      - name: Bundle .app
+        run: cargo bundle --release
+
+      - name: Zip .app
+        run: |
+          cd target/release/bundle/osx
+          zip -r RustWriter-macos.zip RustWriter.app
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/bundle/osx/RustWriter-macos.zip
