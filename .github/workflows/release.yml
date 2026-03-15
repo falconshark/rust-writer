@@ -97,6 +97,9 @@ jobs:
       - name: Bundle .app
         run: cargo bundle --release
 
+      - name: Ad-hoc code sign
+        run: codesign --force --deep --sign - target/release/bundle/osx/RustWriter.app
+
       - name: Zip .app
         run: |
           cd target/release/bundle/osx
