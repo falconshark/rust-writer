@@ -5,6 +5,7 @@ use crate::settings::{BgImageMode, Settings};
 use crate::sounds::AudioPlayer;
 use crate::theme::Theme;
 use crate::toolbar::Toolbar;
+use crate::updater::{UpdateChecker, UpdateStatus};
 use crate::word_count::WordCountBar;
 
 use eframe::egui::{self, Color32, FontId, Key, Rect, RichText, TextEdit, Vec2};
@@ -55,6 +56,11 @@ pub struct RustWriterApp {
 
     // Status
     status_message: Option<(String, f32)>, // message + display timer
+
+    // Update checker
+    update_checker: Option<UpdateChecker>,
+    update_available: Option<String>, // newest version string, if newer than current
+    show_update_banner: bool,
 }
 
 impl RustWriterApp {
@@ -100,6 +106,9 @@ impl RustWriterApp {
             audio: AudioPlayer::new(),
             ime_focused: false,
             status_message: None,
+            update_checker: Some(UpdateChecker::start()),
+            update_available: None,
+            show_update_banner: false,
         }
     }
 
@@ -243,6 +252,17 @@ impl RustWriterApp {
             *timer -= dt;
             if *timer <= 0.0 {
                 self.status_message = None;
+            }
+        }
+
+        // Poll update checker (consumes the checker once it responds)
+        if let Some(ref checker) = self.update_checker {
+            if let Some(status) = checker.poll() {
+                if let UpdateStatus::UpdateAvailable(version) = status {
+                    self.update_available = Some(version);
+                    self.show_update_banner = true;
+                }
+                self.update_checker = None; // done — drop the checker
             }
         }
 
@@ -864,7 +884,22 @@ impl RustWriterApp {
                 ui.vertical_centered(|ui| {
                     ui.add_space(10.0);
                     ui.heading(RichText::new("✍ Rust Writer").size(24.0));
-                    ui.label(RichText::new("Version 0.1.0").color(Color32::GRAY));
+                    ui.label(
+                        RichText::new(concat!("Version ", env!("CARGO_PKG_VERSION")))
+                            .color(Color32::GRAY),
+                    );
+                    if let Some(ref version) = self.update_available.clone() {
+                        ui.label(
+                            RichText::new(format!("🆕 New version {} available!", version))
+                                .color(Color32::from_rgb(100, 200, 100))
+                                .small(),
+                        );
+                        ui.label(
+                            RichText::new(UpdateChecker::releases_url())
+                                .color(Color32::LIGHT_BLUE)
+                                .small(),
+                        );
+                    }
                     ui.add_space(10.0);
                     ui.label("A Focus Writer like fullscreen distraction-free writing app,");
                     ui.label("inspired by FocusWriter, rewritten in Rust.");
@@ -898,6 +933,42 @@ impl RustWriterApp {
         }
     }
 
+    fn render_update_banner(&mut self, ctx: &egui::Context) {
+        if !self.show_update_banner {
+            return;
+        }
+        let version = match &self.update_available {
+            Some(v) => v.clone(),
+            None => return,
+        };
+
+        egui::TopBottomPanel::bottom("update_banner")
+            .frame(egui::Frame {
+                fill: Color32::from_rgb(28, 78, 28),
+                inner_margin: egui::Margin::symmetric(12.0, 6.0),
+                ..Default::default()
+            })
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("🆕 Version {} is available!", version))
+                            .color(Color32::WHITE)
+                            .small(),
+                    );
+                    ui.label(
+                        RichText::new(UpdateChecker::releases_url())
+                            .color(Color32::LIGHT_BLUE)
+                            .small(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("✕").clicked() {
+                            self.show_update_banner = false;
+                        }
+                    });
+                });
+            });
+    }
+
     fn handle_mouse_for_toolbar(&mut self, ctx: &egui::Context) {
         if !self.is_fullscreen {
             return;
@@ -928,6 +999,7 @@ impl eframe::App for RustWriterApp {
         self.render_toolbar(ctx);
         self.render_document_tabs(ctx);
         self.render_status_bar(ctx);
+        self.render_update_banner(ctx);
         self.render_writing_area(ctx);
 
         // Dialogs (rendered on top)

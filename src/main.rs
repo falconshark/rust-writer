@@ -9,6 +9,7 @@ mod settings;
 mod sounds;
 mod theme;
 mod toolbar;
+mod updater;
 mod word_count;
 
 // library code lives in the package's lib crate rather than a submodule

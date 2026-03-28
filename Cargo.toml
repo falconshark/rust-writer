@@ -31,6 +31,9 @@ directories = "5.0"
 # Audio for typewriter sounds
 rodio = "0.17"
 
+# HTTP client for update checking
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
 # Logging
 log = "0.4"
 env_logger = "0.11"
