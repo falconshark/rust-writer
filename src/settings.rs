@@ -49,6 +49,10 @@ pub struct Settings {
 
     #[serde(default)]
     pub current_theme: Theme,
+
+    // Session restore
+    #[serde(default)]
+    pub last_opened_files: Vec<String>,
 }
 
 impl Default for Settings {
@@ -68,6 +72,7 @@ impl Default for Settings {
             bg_image_path: None,
             bg_image_mode: BgImageMode::default(),
             current_theme: Theme::default(),
+            last_opened_files: Vec::new(),
         }
     }
 }

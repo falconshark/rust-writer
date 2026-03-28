@@ -61,7 +61,15 @@ impl RustWriterApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let settings = Settings::load();
         let current_theme = settings.current_theme.clone();
-        let doc_manager = DocumentManager::new();
+
+        // Restore previously opened files
+        let mut doc_manager = DocumentManager::new();
+        for file_path_str in &settings.last_opened_files {
+            let path = std::path::PathBuf::from(file_path_str);
+            if path.exists() {
+                let _ = doc_manager.open_document(&path);
+            }
+        }
 
         // Apply theme to egui context
         apply_theme_to_ctx(&cc.egui_ctx, &current_theme);
@@ -938,6 +946,11 @@ impl eframe::App for RustWriterApp {
                 let _ = doc.save();
             }
         }
+        // Remember which files were open for next session
+        self.settings.last_opened_files = self.doc_manager.all_documents_mut()
+            .iter()
+            .filter_map(|doc| doc.path.as_ref().map(|p| p.to_string_lossy().to_string()))
+            .collect();
         self.save_settings();
     }
 }
