@@ -890,7 +890,11 @@ impl RustWriterApp {
                     );
                     if let Some(ref version) = self.update_available.clone() {
                         ui.label(
-                            RichText::new(format!("🆕 New version {} available!", version))
+                            RichText::new(format!(
+                                "🆕 v{} → v{} available!",
+                                env!("CARGO_PKG_VERSION"),
+                                version
+                            ))
                                 .color(Color32::from_rgb(100, 200, 100))
                                 .small(),
                         );
@@ -951,9 +955,13 @@ impl RustWriterApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("🆕 Version {} is available!", version))
-                            .color(Color32::WHITE)
-                            .small(),
+                        RichText::new(format!(
+                            "🆕 v{} → v{} available!",
+                            env!("CARGO_PKG_VERSION"),
+                            version
+                        ))
+                        .color(Color32::WHITE)
+                        .small(),
                     );
                     ui.label(
                         RichText::new(UpdateChecker::releases_url())
