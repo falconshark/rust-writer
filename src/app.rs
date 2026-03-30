@@ -993,6 +993,40 @@ impl RustWriterApp {
             });
     }
 
+    fn render_update_prompt(&mut self, ctx: &egui::Context) {
+        if let Some(version) = &self.update_available {
+            egui::Window::new("Update Available")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label(format!("Version {} is available. Would you like to update?", version));
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Update Now").clicked() {
+                            self.status_message = Some(("Downloading update...".to_string(), 5.0));
+                            if let Err(e) = UpdateChecker::download_update(version) {
+                                self.status_message = Some((format!("Failed to download update: {}", e), 5.0));
+                                return;
+                            }
+
+                            self.status_message = Some(("Applying update...".to_string(), 5.0));
+                            if let Err(e) = UpdateChecker::apply_update() {
+                                self.status_message = Some((format!("Failed to apply update: {}", e), 5.0));
+                                return;
+                            }
+
+                            self.status_message = Some(("Update applied. Restarting...".to_string(), 5.0));
+                            std::process::exit(0);
+                        }
+
+                        if ui.button("Later").clicked() {
+                            self.show_update_banner = false;
+                        }
+                    });
+                });
+        }
+    }
+
     fn handle_mouse_for_toolbar(&mut self, ctx: &egui::Context) {
         if !self.is_fullscreen {
             return;

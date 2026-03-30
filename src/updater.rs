@@ -1,6 +1,7 @@
 // updater.rs — Background GitHub release checker
 
 use std::sync::mpsc;
+use std::process::Command;
 
 const GITHUB_API_URL: &str =
     "https://api.github.com/repos/falconshark/rust-writer/releases/latest";
@@ -12,6 +13,8 @@ pub enum UpdateStatus {
     UpdateAvailable(String), // new version string
     UpToDate,
     Failed,
+    Downloading,
+    Applying,
 }
 
 pub struct UpdateChecker {
@@ -40,6 +43,37 @@ impl UpdateChecker {
     /// URL users should visit to download the new version.
     pub fn releases_url() -> &'static str {
         GITHUB_RELEASES_URL
+    }
+
+    /// Downloads the latest update.
+    pub fn download_update(version: &str) -> Result<(), String> {
+        let url = format!("https://github.com/falconshark/rust-writer/releases/download/v{}/rustwriter", version);
+        let output = Command::new("curl")
+            .args(["-L", "-o", "rustwriter", &url])
+            .output();
+
+        match output {
+            Ok(o) if o.status.success() => Ok(()),
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Applies the downloaded update.
+    pub fn apply_update() -> Result<(), String> {
+        let output = Command::new("chmod")
+            .args(["+x", "rustwriter"])
+            .output();
+
+        if let Err(e) = output {
+            return Err(e.to_string());
+        }
+
+        Command::new("./rustwriter")
+            .spawn()
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
     }
 }
 
