@@ -13,6 +13,9 @@ pub struct Document {
     pub created_at: DateTime<Local>,
     pub modified_at: DateTime<Local>,
     pub name: String, // Custom name if unsaved
+    // Cached counts — recomputed only when text changes, not every frame.
+    cached_word_count: usize,
+    cached_char_count: usize,
 }
 
 impl Document {
@@ -24,6 +27,8 @@ impl Document {
             created_at: Local::now(),
             modified_at: Local::now(),
             name: "Untitled".to_string(),
+            cached_word_count: 0,
+            cached_char_count: 0,
         }
     }
 
@@ -34,6 +39,7 @@ impl Document {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
+        let (wc, cc) = compute_counts(&text);
         Ok(Self {
             path: Some(path.to_path_buf()),
             text,
@@ -41,6 +47,8 @@ impl Document {
             created_at: Local::now(),
             modified_at: Local::now(),
             name,
+            cached_word_count: wc,
+            cached_char_count: cc,
         })
     }
 
@@ -75,17 +83,17 @@ impl Document {
     pub fn mark_modified(&mut self) {
         self.modified = true;
         self.modified_at = Local::now();
+        let (wc, cc) = compute_counts(&self.text);
+        self.cached_word_count = wc;
+        self.cached_char_count = cc;
     }
 
     pub fn word_count(&self) -> usize {
-        self.text
-            .split_whitespace()
-            .filter(|w| !w.is_empty())
-            .count()
+        self.cached_word_count
     }
 
     pub fn char_count(&self) -> usize {
-        self.text.chars().count()
+        self.cached_char_count
     }
 
     #[allow(dead_code)]
@@ -205,4 +213,54 @@ impl DocumentManager {
     pub fn all_documents_mut(&mut self) -> &mut Vec<Document> {
         &mut self.documents
     }
+}
+
+/// Compute word count and non-whitespace char count in one pass.
+/// - Each CJK / kana / hangul character counts as one word.
+/// - Consecutive non-CJK, non-whitespace characters count as one word.
+/// - Whitespace is ignored in both counts.
+fn compute_counts(text: &str) -> (usize, usize) {
+    let mut words = 0usize;
+    let mut chars = 0usize;
+    let mut in_latin_word = false;
+
+    for c in text.chars() {
+        if c.is_whitespace() {
+            in_latin_word = false;
+        } else if is_cjk(c) {
+            words += 1;
+            chars += 1;
+            in_latin_word = false;
+        } else {
+            if !in_latin_word {
+                words += 1;
+                in_latin_word = true;
+            }
+            chars += 1;
+        }
+    }
+    (words, chars)
+}
+
+fn is_cjk(c: char) -> bool {
+    let n = c as u32;
+    matches!(n,
+        0x1100..=0x11FF   | // Hangul Jamo
+        0x2E80..=0x2FFF   | // CJK Radicals / Kangxi
+        0x3040..=0x309F   | // Hiragana
+        0x30A0..=0x30FF   | // Katakana
+        0x3100..=0x312F   | // Bopomofo
+        0x3130..=0x318F   | // Hangul Compatibility Jamo
+        0x3200..=0x32FF   | // Enclosed CJK
+        0x3400..=0x4DBF   | // CJK Extension A
+        0x4E00..=0x9FFF   | // CJK Unified Ideographs
+        0xA960..=0xA97F   | // Hangul Jamo Extended-A
+        0xAC00..=0xD7AF   | // Hangul Syllables
+        0xD7B0..=0xD7FF   | // Hangul Jamo Extended-B
+        0xF900..=0xFAFF   | // CJK Compatibility Ideographs
+        0xFE30..=0xFE4F   | // CJK Compatibility Forms
+        0x20000..=0x2A6DF | // CJK Extension B
+        0x2A700..=0x2CEAF | // CJK Extension C/D/E
+        0x2CEB0..=0x2EBEF   // CJK Extension F
+    )
 }

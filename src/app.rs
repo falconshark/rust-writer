@@ -51,12 +51,14 @@ pub struct RustWriterApp {
     typing_sounds_enabled: bool,
     audio: Option<AudioPlayer>,
 
-    // IME state — track focus to avoid sending IMEAllowed every frame
-    ime_focused: bool,
-    // Last known cursor screen position. When IMEAllowed(true) recreates
-    // the XIM IC (which resets spot to (0,0)), we immediately queue this
-    // in the same frame so winit's IME request loop sets the correct spot
-    // before GCIN can show the candidate window at the wrong position.
+    // Maximize on the first frame (with_maximized in ViewportBuilder is ignored by eframe 0.28)
+    needs_maximize: bool,
+
+    // IME: send IMEAllowed(true) exactly once at startup so the XIM IC is
+    // created once and never destroyed (IC recreation resets spot to (0,0)).
+    ime_initialized: bool,
+    // Last known cursor screen position, kept in sync every focused frame
+    // and sent immediately after IMEAllowed(true) to pre-fill the spot.
     ime_cursor_pos: Option<egui::Pos2>,
 
     // Status
@@ -109,7 +111,8 @@ impl RustWriterApp {
             session_words_typed: 0,
             typing_sounds_enabled: settings.typing_sounds,
             audio: AudioPlayer::new(),
-            ime_focused: false,
+            needs_maximize: true,
+            ime_initialized: false,
             ime_cursor_pos: None,
             status_message: None,
             update_checker: Some(UpdateChecker::start()),
@@ -593,37 +596,28 @@ impl RustWriterApp {
                             let output = text_edit.show(ui);
                             let response = output.response;
 
-                            // Update IME state for CJK input methods.
-                            let focused = response.has_focus();
-                            if focused != self.ime_focused {
-                                self.ime_focused = focused;
-                                ctx.send_viewport_cmd(egui::ViewportCommand::IMEAllowed(focused));
-
-                                // When re-enabling IME, IMEAllowed(true) destroys the old XIM IC
-                                // and creates a new one with spot (0,0). Immediately queue the
-                                // cached cursor position in the SAME frame. Winit processes all
-                                // queued IME requests in a single loop iteration, so the IC is
-                                // created AND the spot is corrected before GCIN can handle any
-                                // key event — preventing the candidate window from jumping to (0,0).
-                                if focused {
-                                    if let Some(pos) = self.ime_cursor_pos {
-                                        ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                            egui::Rect::from_min_size(
-                                                pos,
-                                                egui::vec2(1.0, font_size),
-                                            ),
-                                        ));
-                                    }
-                                }
+                            // IME handling for CJK input methods (GCIN etc.)
+                            //
+                            // We send IMEAllowed(true) exactly ONCE at startup and never
+                            // toggle it off. Toggling causes winit to destroy and recreate
+                            // the XIM IC, which resets the spot location to (0,0) and makes
+                            // GCIN's candidate window jump — even after window resize or any
+                            // focus change inside the app.
+                            if !self.ime_initialized {
+                                self.ime_initialized = true;
+                                ctx.send_viewport_cmd(egui::ViewportCommand::IMEAllowed(true));
                             }
+
+                            // Keep GCIN's spot in sync whenever the text area is focused.
+                            let focused = response.has_focus();
                             if focused {
-                                if let Some(cursor_range) = output.cursor_range {
-                                    let cursor_rect = output.galley.pos_from_cursor(&cursor_range.primary);
-                                    let screen_pos = output.galley_pos + cursor_rect.min.to_vec2();
-                                    self.ime_cursor_pos = Some(screen_pos);
+                                if let Some(cr) = output.cursor_range {
+                                    let r = output.galley.pos_from_cursor(&cr.primary);
+                                    let pos = output.galley_pos + r.min.to_vec2();
+                                    self.ime_cursor_pos = Some(pos);
                                     ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
                                         egui::Rect::from_min_size(
-                                            screen_pos,
+                                            pos,
                                             egui::vec2(1.0, font_size),
                                         ),
                                     ));
@@ -1017,8 +1011,12 @@ impl RustWriterApp {
 
 impl eframe::App for RustWriterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let dt = ctx.input(|i| i.unstable_dt).min(0.1);
+        if self.needs_maximize {
+            self.needs_maximize = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
 
+        let dt = ctx.input(|i| i.unstable_dt).min(0.1);
 
         // Timers and background logic
         self.tick_timers(dt);
