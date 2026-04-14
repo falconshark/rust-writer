@@ -60,6 +60,18 @@ pub struct RustWriterApp {
     // Last known cursor screen position, kept in sync every focused frame
     // and sent immediately after IMEAllowed(true) to pre-fill the spot.
     ime_cursor_pos: Option<egui::Pos2>,
+    // True while an IME composition (preedit) is in progress. When composing,
+    // we do NOT update ime_cursor_pos — the galley reflows with the preedit
+    // text so the calculated position drifts, making GCIN's window jump.
+    // Position is locked at the moment composition begins and released on
+    // Commit or empty-Preedit (composition cancelled).
+    ime_composing: bool,
+    // Frames remaining after a Commit/cancel before we allow ime_cursor_pos
+    // to be updated again.  After a commit, the galley needs ~1-2 frames to
+    // stabilise, AND with fast typing the next Preedit may arrive in the very
+    // next frame — the cooldown bridges that gap so the window doesn't jump
+    // between each committed character.
+    ime_cooldown: u8,
 
     // Status
     status_message: Option<(String, f32)>, // message + display timer
@@ -114,6 +126,8 @@ impl RustWriterApp {
             needs_maximize: true,
             ime_initialized: false,
             ime_cursor_pos: None,
+            ime_composing: false,
+            ime_cooldown: 0,
             status_message: None,
             update_checker: Some(UpdateChecker::start()),
             update_available: None,
@@ -555,12 +569,46 @@ impl RustWriterApp {
                         scroll_area.show(ui, |ui| {
                             let text = self.doc_manager.current_text_mut();
 
-                            // Detect IME composition (preedit in progress).
+                            // Per-frame preedit detection — used for key filtering and
+                            // sound effects only.  Behaviour is identical to before: true
+                            // only in frames where GCIN sends a Preedit event, so arrow
+                            // keys and sounds work normally between keystrokes.
                             let ime_composing = ctx.input(|i| {
                                 i.events.iter().any(|e| {
                                     matches!(e, egui::Event::Ime(egui::ImeEvent::Preedit(_)))
                                 })
                             });
+
+                            // Persistent position-lock state — separate from the above.
+                            // Non-empty Preedit  → composing, cancel any cooldown.
+                            // Empty Preedit      → cancelled, start cooldown.
+                            // Commit             → committed, start cooldown.
+                            // The cooldown bridges the gap between Commit and the next
+                            // Preedit: with fast typing those events arrive in adjacent
+                            // frames, and without it the spot jumps between each commit.
+                            ctx.input(|i| {
+                                for e in &i.events {
+                                    match e {
+                                        egui::Event::Ime(egui::ImeEvent::Preedit(text)) => {
+                                            if text.is_empty() {
+                                                self.ime_composing = false;
+                                                self.ime_cooldown = 4;
+                                            } else {
+                                                self.ime_composing = true;
+                                                self.ime_cooldown = 0;
+                                            }
+                                        }
+                                        egui::Event::Ime(egui::ImeEvent::Commit(_)) => {
+                                            self.ime_composing = false;
+                                            self.ime_cooldown = 4;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            });
+                            if self.ime_cooldown > 0 {
+                                self.ime_cooldown -= 1;
+                            }
 
                             // During IME composition, filter out cursor-movement keys so
                             // they are used only for IME candidate navigation, not for
@@ -609,12 +657,20 @@ impl RustWriterApp {
                             }
 
                             // Keep GCIN's spot in sync whenever the text area is focused.
+                            // Position is frozen while composing OR during the post-commit
+                            // cooldown — both prevent the window from chasing an unstable
+                            // galley position between compositions.
                             let focused = response.has_focus();
                             if focused {
-                                if let Some(cr) = output.cursor_range {
-                                    let r = output.galley.pos_from_cursor(&cr.primary);
-                                    let pos = output.galley_pos + r.min.to_vec2();
-                                    self.ime_cursor_pos = Some(pos);
+                                let position_locked = self.ime_composing || self.ime_cooldown > 0;
+                                if !position_locked {
+                                    if let Some(cr) = output.cursor_range {
+                                        let r = output.galley.pos_from_cursor(&cr.primary);
+                                        let pos = output.galley_pos + r.min.to_vec2();
+                                        self.ime_cursor_pos = Some(pos);
+                                    }
+                                }
+                                if let Some(pos) = self.ime_cursor_pos {
                                     ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
                                         egui::Rect::from_min_size(
                                             pos,
