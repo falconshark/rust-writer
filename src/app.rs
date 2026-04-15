@@ -666,17 +666,26 @@ impl RustWriterApp {
                                 if !position_locked {
                                     if let Some(cr) = output.cursor_range {
                                         let r = output.galley.pos_from_cursor(&cr.primary);
-                                        let pos = output.galley_pos + r.min.to_vec2();
-                                        self.ime_cursor_pos = Some(pos);
+                                        // Anchor at the bottom of the cursor row (text baseline)
+                                        // so GCIN's candidate window appears below the current line.
+                                        self.ime_cursor_pos = Some(egui::pos2(
+                                            output.galley_pos.x + r.min.x,
+                                            output.galley_pos.y + r.max.y,
+                                        ));
                                     }
                                 }
                                 if let Some(pos) = self.ime_cursor_pos {
-                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(
-                                        egui::Rect::from_min_size(
-                                            pos,
-                                            egui::vec2(1.0, font_size),
-                                        ),
-                                    ));
+                                    let spot = egui::Rect::from_min_size(pos, egui::vec2(1.0, 1.0));
+                                    // egui-winit 0.28 uses ime.rect (the full TextEdit area) as
+                                    // the XIM spot instead of ime.cursor_rect — override it with
+                                    // the actual cursor position so GCIN appears near the cursor.
+                                    ctx.output_mut(|o| {
+                                        if let Some(ime) = o.ime.as_mut() {
+                                            ime.rect = spot;
+                                            ime.cursor_rect = spot;
+                                        }
+                                    });
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(spot));
                                 }
                             }
 
