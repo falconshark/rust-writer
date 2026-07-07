@@ -13,8 +13,6 @@ pub enum UpdateStatus {
     UpdateAvailable(String), // new version string
     UpToDate,
     Failed,
-    Downloading,
-    Applying,
 }
 
 pub struct UpdateChecker {

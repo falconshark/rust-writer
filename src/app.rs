@@ -1,6 +1,7 @@
 // app.rs - Main application state and UI rendering
 
 use crate::document::DocumentManager;
+use crate::search::{self, SearchState};
 use crate::settings::{BgImageMode, Settings};
 use crate::sounds::AudioPlayer;
 use crate::theme::Theme;
@@ -80,6 +81,10 @@ pub struct RustWriterApp {
     update_checker: Option<UpdateChecker>,
     update_available: Option<String>, // newest version string, if newer than current
     show_update_banner: bool,
+
+    // Find / find-and-replace
+    search: SearchState,
+    search_last_doc_index: usize, // detects tab switches so matches don't go stale
 }
 
 impl RustWriterApp {
@@ -132,7 +137,15 @@ impl RustWriterApp {
             update_checker: Some(UpdateChecker::start()),
             update_available: None,
             show_update_banner: false,
+            search: SearchState::new(),
+            search_last_doc_index: 0,
         }
+    }
+
+    /// Stable id of the main writing-area TextEdit, so the search bar can
+    /// refocus it (e.g. on Escape) without threading a Response through.
+    fn text_edit_id() -> egui::Id {
+        egui::Id::new("main_text_edit")
     }
 
     fn toggle_fullscreen(&mut self, ctx: &egui::Context) {
@@ -167,9 +180,32 @@ impl RustWriterApp {
         if input.key_pressed(Key::F5) {
             self.typewriter_mode = !self.typewriter_mode;
         }
-        // Escape - Exit fullscreen
-        if input.key_pressed(Key::Escape) && self.is_fullscreen {
-            self.toggle_fullscreen(ctx);
+        // Ctrl+F - Find
+        if input.key_pressed(Key::F) && input.modifiers.ctrl {
+            self.search.open_find();
+            self.search_update_query();
+        }
+        // Ctrl+H - Find & Replace
+        if input.key_pressed(Key::H) && input.modifiers.ctrl {
+            self.search.open_replace();
+            self.search_update_query();
+        }
+        // F3 / Shift+F3 - Find next/previous (once a search is active)
+        if input.key_pressed(Key::F3) && !self.search.query.is_empty() {
+            if input.modifiers.shift {
+                self.search_find_prev();
+            } else {
+                self.search_find_next();
+            }
+        }
+        // Escape - close the search bar first, then exit fullscreen
+        if input.key_pressed(Key::Escape) {
+            if self.search.open {
+                self.search.close();
+                ctx.memory_mut(|m| m.request_focus(Self::text_edit_id()));
+            } else if self.is_fullscreen {
+                self.toggle_fullscreen(ctx);
+            }
         }
         // Ctrl+, - Settings
         if input.key_pressed(Key::Comma) && input.modifiers.ctrl {
@@ -256,6 +292,47 @@ impl RustWriterApp {
 
     fn show_status(&mut self, msg: &str) {
         self.status_message = Some((msg.to_string(), 3.0));
+    }
+
+    // ─── Find / find-and-replace ──────────────────────────────────────────
+
+    fn search_update_query(&mut self) {
+        let text = self.doc_manager.current_text_mut();
+        self.search.refresh_matches(text);
+        self.search.pending_scroll = self.search.current_match().map(|(s, _)| s);
+    }
+
+    fn search_find_next(&mut self) {
+        let from = self.search.current_match().map(|(_, e)| e).unwrap_or(0);
+        let text = self.doc_manager.current_text_mut();
+        if let Some((s, _)) = self.search.find_next(text, from) {
+            self.search.pending_scroll = Some(s);
+        }
+    }
+
+    fn search_find_prev(&mut self) {
+        let from = self.search.current_match().map(|(s, _)| s).unwrap_or(usize::MAX);
+        let text = self.doc_manager.current_text_mut();
+        if let Some((s, _)) = self.search.find_prev(text, from) {
+            self.search.pending_scroll = Some(s);
+        }
+    }
+
+    fn search_replace_current(&mut self) {
+        let text = self.doc_manager.current_text_mut();
+        let replaced = self.search.replace_current(text).is_some();
+        if replaced {
+            self.doc_manager.mark_modified();
+            self.search.pending_scroll = self.search.current_match().map(|(s, _)| s);
+        }
+    }
+
+    fn search_replace_all(&mut self) {
+        let text = self.doc_manager.current_text_mut();
+        let count = self.search.replace_all(text);
+        if count > 0 {
+            self.doc_manager.mark_modified();
+        }
     }
 
     fn tick_timers(&mut self, dt: f32) {
@@ -500,6 +577,129 @@ impl RustWriterApp {
             });
     }
 
+    fn render_search_bar(&mut self, ctx: &egui::Context) {
+        if !self.search.open {
+            return;
+        }
+
+        // Switching documents (tabs) while the search bar stays open would
+        // otherwise leave match positions pointing at the wrong document.
+        let doc_idx = self.doc_manager.current_index();
+        if doc_idx != self.search_last_doc_index {
+            self.search_last_doc_index = doc_idx;
+            self.search_update_query();
+        }
+
+        egui::TopBottomPanel::top("search_bar")
+            .frame(egui::Frame {
+                fill: self.current_theme.toolbar_bg,
+                inner_margin: egui::Margin::symmetric(8.0, 6.0),
+                ..Default::default()
+            })
+            .show(ctx, |ui| {
+                let ui_color = self.current_theme.ui_text_color();
+
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Find:").color(ui_color));
+                    let query_resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.search.query)
+                            .desired_width(200.0)
+                            .hint_text("Search..."),
+                    );
+                    if self.search.focus_query {
+                        query_resp.request_focus();
+                        self.search.focus_query = false;
+                    }
+                    if query_resp.changed() {
+                        self.search_update_query();
+                    }
+                    let enter_in_query = query_resp.lost_focus()
+                        && ui.input(|i| i.key_pressed(Key::Enter));
+                    if enter_in_query {
+                        if ui.input(|i| i.modifiers.shift) {
+                            self.search_find_prev();
+                        } else {
+                            self.search_find_next();
+                        }
+                        query_resp.request_focus();
+                    }
+
+                    let counter_text = if self.search.query.is_empty() {
+                        String::new()
+                    } else if self.search.matches.is_empty() {
+                        "No results".to_string()
+                    } else {
+                        format!(
+                            "{}/{}",
+                            self.search.current.map(|c| c + 1).unwrap_or(0),
+                            self.search.matches.len()
+                        )
+                    };
+                    ui.label(RichText::new(counter_text).color(ui_color).small());
+
+                    if ui.small_button("◀").on_hover_text("Previous (Shift+Enter)").clicked() {
+                        self.search_find_prev();
+                    }
+                    if ui.small_button("▶").on_hover_text("Next (Enter)").clicked() {
+                        self.search_find_next();
+                    }
+
+                    if ui
+                        .selectable_label(self.search.case_sensitive, "Aa")
+                        .on_hover_text("Case sensitive")
+                        .clicked()
+                    {
+                        self.search.case_sensitive = !self.search.case_sensitive;
+                        self.search_update_query();
+                    }
+                    if ui
+                        .selectable_label(self.search.whole_word, "\"W\"")
+                        .on_hover_text("Whole word")
+                        .clicked()
+                    {
+                        self.search.whole_word = !self.search.whole_word;
+                        self.search_update_query();
+                    }
+
+                    let replace_label = if self.search.replace_mode {
+                        "▲ Replace"
+                    } else {
+                        "▼ Replace"
+                    };
+                    if ui.button(replace_label).clicked() {
+                        self.search.replace_mode = !self.search.replace_mode;
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("✕").clicked() {
+                            self.search.close();
+                            ctx.memory_mut(|m| m.request_focus(Self::text_edit_id()));
+                        }
+                    });
+                });
+
+                if self.search.replace_mode {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Replace:").color(ui_color));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.search.replace_text)
+                                .desired_width(200.0)
+                                .hint_text("Replace with..."),
+                        );
+                        if ui.button("Replace").clicked() {
+                            self.search_replace_current();
+                        }
+                        if ui.button("Replace All").clicked() {
+                            self.search_replace_all();
+                        }
+                        if let Some(status) = self.search.status.clone() {
+                            ui.label(RichText::new(status).color(Color32::LIGHT_GREEN).small());
+                        }
+                    });
+                }
+            });
+    }
+
     fn render_writing_area(&mut self, ctx: &egui::Context) {
         let text_width = self.settings.text_column_width;
         let font_size = self.settings.font_size;
@@ -633,16 +833,52 @@ impl RustWriterApp {
                                 });
                             }
 
-                            let text_edit = TextEdit::multiline(text)
+                            // Highlight search matches via a custom layouter. Only built
+                            // when a search is active — otherwise this degenerates to the
+                            // same plain layout egui's default layouter would produce.
+                            let has_active_search =
+                                self.search.open && !self.search.query.is_empty();
+                            let match_ranges = self.search.matches.clone();
+                            let current_match_idx = self.search.current;
+                            let highlight_font_id = FontId::new(font_size, font_family.clone());
+                            let highlight_text_color = theme.text_color;
+                            let mut layouter = move |ui: &egui::Ui, text: &str, wrap_width: f32| {
+                                let job = search::build_layout_job(
+                                    text,
+                                    highlight_font_id.clone(),
+                                    highlight_text_color,
+                                    wrap_width,
+                                    &match_ranges,
+                                    current_match_idx,
+                                );
+                                ui.fonts(|f| f.layout_job(job))
+                            };
+
+                            let mut text_edit = TextEdit::multiline(text)
+                                .id(Self::text_edit_id())
                                 .font(FontId::new(font_size, font_family))
                                 .text_color(theme.text_color)
                                 .frame(false)
                                 .desired_width(text_width)
                                 .desired_rows(40)
                                 .lock_focus(true);
+                            if has_active_search {
+                                text_edit = text_edit.layouter(&mut layouter);
+                            }
 
                             let output = text_edit.show(ui);
                             let response = output.response;
+
+                            // Scroll the current search match into view, if one is pending.
+                            if let Some(char_idx) = self.search.pending_scroll.take() {
+                                let ccursor = egui::text::CCursor::new(char_idx);
+                                let cursor_rect = output.galley.pos_from_ccursor(ccursor);
+                                let target = egui::Rect::from_min_max(
+                                    output.galley_pos + cursor_rect.min.to_vec2(),
+                                    output.galley_pos + cursor_rect.max.to_vec2(),
+                                );
+                                ui.scroll_to_rect(target, Some(egui::Align::Center));
+                            }
 
                             // IME handling for CJK input methods (GCIN etc.)
                             //
@@ -691,6 +927,11 @@ impl RustWriterApp {
 
                             if response.changed() {
                                 self.doc_manager.mark_modified();
+                                if has_active_search {
+                                    // Typed edits shift match positions — recompute so
+                                    // highlights and the match counter stay accurate.
+                                    self.search_update_query();
+                                }
                                 if self.typing_sounds_enabled && !ime_composing {
                                     if let Some(ref audio) = self.audio {
                                         let volume = self.settings.sound_volume;
@@ -1125,6 +1366,7 @@ impl eframe::App for RustWriterApp {
         // Render panels (order matters!)
         self.render_toolbar(ctx);
         self.render_document_tabs(ctx);
+        self.render_search_bar(ctx);
         self.render_status_bar(ctx);
         self.render_update_banner(ctx);
         self.render_writing_area(ctx);

@@ -5,6 +5,7 @@
 
 mod app;
 mod document;
+mod search;
 mod settings;
 mod sounds;
 mod theme;
