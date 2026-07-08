@@ -915,13 +915,21 @@ impl RustWriterApp {
                                     // egui-winit 0.28 uses ime.rect (the full TextEdit area) as
                                     // the XIM spot instead of ime.cursor_rect — override it with
                                     // the actual cursor position so GCIN appears near the cursor.
+                                    //
+                                    // Only this in-process output write is needed: egui-winit's
+                                    // handle_platform_output() reads it every frame and calls
+                                    // window.set_ime_cursor_area() itself. We used to *also* call
+                                    // ctx.send_viewport_cmd(ViewportCommand::IMERect(spot)) here,
+                                    // but that path has no de-duplication at all and issues its
+                                    // own unconditional set_ime_cursor_area() call — doubling the
+                                    // synchronous XIM round-trips to GCIN on every single frame
+                                    // and causing a perceptible typing stutter while composing.
                                     ctx.output_mut(|o| {
                                         if let Some(ime) = o.ime.as_mut() {
                                             ime.rect = spot;
                                             ime.cursor_rect = spot;
                                         }
                                     });
-                                    ctx.send_viewport_cmd(egui::ViewportCommand::IMERect(spot));
                                 }
                             }
 
